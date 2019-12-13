@@ -3,6 +3,7 @@ package blackfire
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -19,35 +20,20 @@ import (
 var agentSocket string
 var blackfireQuery string
 
+var cpuProfileBuffer bytes.Buffer
+
 var isProfiling *uint32 = new(uint32)
 
 var profileCount = 0
 
+type ProfilerErrorType int
+
+var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
+var ProfilerErrorProfilingDisabled = errors.New("Profiling is disabled because the required variables are not set. To enable profiling, run via 'blackfire run' or call SetAgentSocket() and SetBlackfireQuery() manually.")
+
 func init() {
 	agentSocket = os.Getenv("BLACKFIRE_AGENT_SOCKET")
 	blackfireQuery = os.Getenv("BLACKFIRE_QUERY")
-}
-
-func profileFor(duration time.Duration) (profile *pprof_reader.Profile, err error) {
-	var buffer bytes.Buffer
-
-	if err = pprof.StartCPUProfile(&buffer); err != nil {
-		return nil, err
-	}
-
-	time.Sleep(duration)
-	pprof.StopCPUProfile()
-
-	profile, err = pprof_reader.ReadFromPProf(&buffer)
-	if err != nil {
-		return nil, err
-	}
-
-	if profile == nil {
-		return nil, fmt.Errorf("Profile was not created")
-	}
-
-	return
 }
 
 func connectToAgent() (net.Conn, error) {
@@ -120,59 +106,25 @@ func sendPrologue(conn net.Conn) error {
 		return err
 	}
 
-	// TODO: Don't just throw out the headers
+	// TODO: Maybe validate the headers rather than ignoring them?
 	_, err := readHeaders(conn)
 
 	return err
 }
 
-func checkSocketAndQueryValues() error {
-	if len(agentSocket) == 0 {
-		return fmt.Errorf("Profiling is disabled: Blackfire agent socket not set. Run via 'blackfire run' or call SetAgentSocket()")
-	}
-	if len(blackfireQuery) == 0 {
-		return fmt.Errorf("Profiling is disabled: Blackfire query not set. Run via 'blackfire run' or call SetBlackfireQuery()")
-	}
-	return nil
+func acquireProfileLock() bool {
+	return atomic.CompareAndSwapUint32(isProfiling, 0, 1)
 }
 
-func profileAndSend(duration time.Duration) error {
-	if err := checkSocketAndQueryValues(); err != nil {
-		return err
+func releaseProfileLock() {
+	atomic.StoreUint32(isProfiling, 0)
+}
+
+func checkCanProfile() error {
+	if len(agentSocket) == 0 || len(blackfireQuery) == 0 {
+		return ProfilerErrorProfilingDisabled
 	}
-
-	log.Printf("Profiling for %v seconds...\n", duration)
-
-	profile, err := profileFor(duration)
-	if err != nil {
-		return err
-	}
-
-	if !profile.HasData() {
-		return nil
-	}
-
-	conn, err := connectToAgent()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	if err := sendPrologue(conn); err != nil {
-		return err
-	}
-
-	if err := pprof_reader.WriteBFFormat(profile, profile.BiggestImpactEntryPoint(), conn); err != nil {
-		return err
-	}
-
-	profileCount++
-
-	if err == nil {
-		log.Printf("Profiling complete.\n")
-	}
-
-	return err
+	return nil
 }
 
 // Check if we are running via `blackfire run`
@@ -192,32 +144,113 @@ func SetBlackfireQuery(newValue string) {
 	blackfireQuery = newValue
 }
 
-// Profile the current process for the specified number of seconds, then
-// connect to the agent and upload the generated profile.
-func ProfileFor(duration time.Duration) (err error) {
-	if atomic.CompareAndSwapUint32(isProfiling, 0, 1) {
-		err = profileAndSend(duration)
-		atomic.StoreUint32(isProfiling, 0)
-	} else {
-		log.Printf("A Blackfire profile is currently in progress. Please wait for it to finish.")
-	}
-	return
+// Check if the profiler is running. Only one profiler may run at a time.
+func IsProfiling() bool {
+	return atomic.LoadUint32(isProfiling) != 0
 }
 
-// Trigger for the specified number of seconds when the specified signal is received.
-func TriggerOnSignal(sig os.Signal, profileDuration time.Duration) {
-	if err := checkSocketAndQueryValues(); err != nil {
-		log.Printf("%v\n", err)
-		return
+// Alias to StartProfiling
+func Enable() error {
+	return StartProfiling()
+}
+
+// Start profiling. Profiling will continue until you call StopProfiling().
+//
+// WARNING: If you forget to stop profiling, the profile buffer will continue
+// growing until it fills up all memory!
+func StartProfiling() error {
+	if err := checkCanProfile(); err != nil {
+		return err
 	}
+
+	if acquireProfileLock() {
+		if err := pprof.StartCPUProfile(&cpuProfileBuffer); err != nil {
+			releaseProfileLock()
+			return err
+		}
+	} else {
+		return ProfilerErrorAlreadyProfiling
+	}
+	return nil
+}
+
+// Alias to StopProfiling
+func Disable() error {
+	return StopProfiling()
+}
+
+// Stop profiling and upload the result to the agent.
+func StopProfiling() error {
+	if IsProfiling() {
+		defer releaseProfileLock()
+
+		pprof.StopCPUProfile()
+
+		profile, err := pprof_reader.ReadFromPProf(&cpuProfileBuffer)
+		if err != nil {
+			return err
+		}
+
+		if profile == nil {
+			return fmt.Errorf("Profile was not created")
+		}
+
+		if !profile.HasData() {
+			return nil
+		}
+
+		conn, err := connectToAgent()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		if err := sendPrologue(conn); err != nil {
+			return err
+		}
+
+		if err := pprof_reader.WriteBFFormat(profile, profile.BiggestImpactEntryPoint(), conn); err != nil {
+			return err
+		}
+
+		profileCount++
+	}
+	return nil
+}
+
+// Profile the current process for the specified number of seconds, then
+// connect to the agent and upload the generated profile.
+func ProfileFor(duration time.Duration) error {
+	if err := StartProfiling(); err != nil {
+		return err
+	}
+	time.Sleep(duration)
+	if err := StopProfiling(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Set up a trigger to start profiling when the specified signal is received.
+// The profiler will profile for the specified number of seconds and then upload
+// the result to the agent.
+func TriggerOnSignal(sig os.Signal, profileDuration time.Duration) error {
+	if err := checkCanProfile(); err != nil {
+		return err
+	}
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, sig)
 	go func() {
 		for {
 			<-sigs
+			log.Printf("Blackfire: Triggered by signal %v. Profiling for %v seconds\n", sig, float64(profileDuration)/1000000000)
 			if err := ProfileFor(profileDuration); err != nil {
-				log.Printf("Error profiling: %v\n", err)
+				log.Printf("Blackfire: Error profiling: %v\n", err)
+			} else {
+				log.Printf("Blackfire: Profiling complete\n")
 			}
 		}
 	}()
+	return nil
 }
