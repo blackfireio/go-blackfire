@@ -11,8 +11,6 @@ Prerequisites
 
 Blackfire integration will only run if you have the Blackfire agent installed. Please refer to the [installation docs](https://blackfire.io/docs/up-and-running/installation).
 
-
-
 Adding the probe to your application
 ------------------------------------
 
@@ -52,9 +50,9 @@ $ kill -SIGUSR1 18283
 
 With this approach, you trigger via an API call, which you can then hook up to anything you want (for example, receiving a specific magic HTTP request).
 
-```golang
-err := blackfire.ProfileFor(2 * time.Second)
-```
+    ```golang
+    err := blackfire.ProfileFor(2 * time.Second)
+    ```
 
 With this approach, you can set up your own triggers 
 
