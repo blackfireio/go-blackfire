@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/blackfireio/go-blackfire/pprof_reader"
+	"github.com/blackfireio/osinfo"
 )
 
 var agentSocket string
@@ -89,6 +90,23 @@ func writeHeaders(headers map[string]string, conn net.Conn) error {
 	return w.Flush()
 }
 
+func getOSHeader() string {
+	info, err := osinfo.GetOSInfo()
+	if err != nil {
+		log.Printf("OSINFO: %v\n", err)
+	}
+	codename := info.Codename
+	if len(codename) > 0 {
+		codename = " codename=" + codename
+	}
+	build := info.Build
+	if len(build) > 0 {
+		build = " build=" + build
+	}
+
+	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build)
+}
+
 func sendPrologue(conn net.Conn) error {
 	if blackfireQuery == "" {
 		return fmt.Errorf("Blackfire query not set")
@@ -102,6 +120,7 @@ func sendPrologue(conn net.Conn) error {
 	sendHeaders := make(map[string]string)
 	sendHeaders["Blackfire-Query"] = fullBlackfireQuery
 	sendHeaders["Blackfire-Probe"] = "go-1.13.3"
+	sendHeaders["os-version"] = getOSHeader()
 	if err := writeHeaders(sendHeaders, conn); err != nil {
 		return err
 	}
