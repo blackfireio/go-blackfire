@@ -3,86 +3,114 @@ Blackfire Probe for Go
 
 Welcome to the Blackfire probe for go! This document will help you integrate the Blackfire probe into your go applications.
 
-You can start profiling as many times as you like, but only one profiling session can be active at a time.
+You can generate as many profiles as you like, but only one profiling session can be active at a time.
+
+
 
 Prerequisites
 -------------
 
-Blackfire integration will only run if you have the Blackfire agent installed.
+The probe requires the Blackfire agent to be installed.
 Please refer to the [installation docs](https://blackfire.io/docs/up-and-running/installation).
 
-Adding the probe to your application
-------------------------------------
 
-First, import the Blackfire module:
 
-```golang
-import "github.com/blackfire/go-blackfire"
-```
+Usage
+-----
 
-There are multiple ways to profile:
+**Note:** Only one profile may run at a time. Attempting to start another profile while one is still running will return `ProfilerErrorAlreadyProfiling`.
 
-### Trigger from a POSIX signal
 
-With this approach, your application will profile for a set period of time whenever it receives a POSIX signal.
-
-For example, to profile for 5 seconds each time it receives `SIGUSR1`:
+### Installing the HTTP Handler
 
 ```golang
-if err := blackfire.TriggerOnSignal(syscall.SIGUSR1, 5 * time.Second); err != nil {
+import "github.com/blackfire/go-blackfire/http"
 
+func installProfilerHttpServer() {
+	if err := http.StartServer("localhost:6020"); err != nil {
+		log.Println(err)
+	}
 }
 ```
 
-You can then send your process a signal like so:
+The following HTTP paths will be available:
 
-Example: If your server PID is 18283:
+| Path                | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| `/start`            | Start profiling                                       |
+| `/start?duration=x` | Profile for the specified duration in seconds (float) |
+| `/stop`             | Stop profiling                                        |
 
-```
-kill -SIGUSR1 18283
-```
+The HTTP paths do not return any data; only code 200 on successful trigger.
 
-**Remember:** Only one profile may run at a time. If a second profile trigger arrives while a profile
-is currently being run, it will be ignored (and output a log message).
 
-### Trigger profiling manually
-
-With this approach, you trigger via an API call, which you can then hook up to anything you want
-(for example, receiving a specific magic HTTP request).
-
-    ```golang
-    err := blackfire.ProfileFor(2 * time.Second)
-    ```
-
-With this approach, you can set up your own triggers.
-
-### Start and stop manually
-
-This approach offers the most control, but **you must be sure to stop profiling when you're done**,
-or else it will continue filling the profiler buffer forever!
+### Installing the Signal Handler
 
 ```golang
-err := blackfire.StartProfiling()
+import "github.com/blackfire/go-blackfire/signal"
+
+func installProfilerSignalHandlers() {
+	if err := signal.StartOnSignal(syscall.SIGUSR1, 5*time.Second); err != nil {
+		log.Println(err)
+	}
+	if err := signal.StopOnSignal(syscall.SIGUSR2); err != nil {
+		log.Println(err)
+	}
+}
 ```
 
+
+### Advanced Profiling
+
 ```golang
-err := blackfire.StopProfiling()
+import "github.com/blackfire/go-blackfire"
+
+func runProfiler() {
+	if err := blackfire.StartProfiling(); err != nil {
+		log.Println(err)
+	}
+
+	doSomeThings()
+
+	if err := blackfire.StopProfiling(); err != nil {
+		log.Println(err)
+	}
+}
+
+func profileFor5Seconds() {
+	if err := blackfire.ProfileFor(5 * time.Second); err != nil {
+		log.Println(err)
+	}
+}
 ```
+
+
+
+Advanced API
+------------
+
+The Blackfire probe also provides a number of APIs for more advanced needs:
+
+- `IsRunningViaBlackfire()`: Returns true if your application was launched using `blackfire run`.
+- `SetAgentSocket()`: Sets the socket type and address to use for connecting to the agent. Example: `tcp://127.0.0.1:40635`
+- `SetBlackfireQuery()`: Sets the Blackfire query string to use when communicating with the agent.
+- `IsProfiling()`: Returns true if the profiler is currently profiling.
+- `SetMaxProfileDuration()`: Sets the maximum duration that a profiling session may run. At this point, it will be automatically terminated. Defaults to 30 minutes.
+- `ProfileWithCallback()`: Run the profiler, and call a callback on completion.
+
+
 
 Running your application with profiling enabled
 -----------------------------------------------
 
-The easiest way to enable profiling is to use the [POSIX signal approach](#trigger-from-a-posix-signal)
-and run your application via `blackfire run`:
+The easiest way to enable profiling is to start your application via `blackfire run`:
 
 ```
 $ blackfire run my_application
 2019/12/11 11:44:01 INFO: My application started
 ```
 
-The `blackfire` tool will automatically set up the values that the application needs in order to profile
-and upload the data. If you run your application directly (i.e. not via `blackfire run`), all profiling
-will be disabled (it will write a log message to this effect):
+The `blackfire` tool will automatically set up the environment values that the probe uses in order to profile and upload the data. If you run your application directly (i.e. not via `blackfire run`), all profiling will be disabled, and it will write a log message to this effect:
 
 ```
 $ my_application
@@ -90,27 +118,4 @@ $ my_application
 2019/12/11 11:44:45 INFO: My application started
 ```
 
-The other approaches require you to monitor the [error type](#error-types) returned by `ProfileFor()`
-or `StartProfiling()`. When your application is not launched via `blackfire run`, the returned error
-will have `ErrorType` = `ProfilerErrorProfilingDisabled`.
-
-### Error Types
-
-The following special errors may be returned when attempting to profile:
-
-- `ProfilerErrorAlreadyProfiling`: The profiler is already running. You must wait for it to finish.
-- `ProfilerErrorProfilingDisabled`: Profiling is disabled because your app wasn't started via `blackfire run`,
- and you haven't set the agent socket or Blackfire query.
-
-These error types allow you to intelligently ignore certain classes of errors (for example, allowing your app
-to run without profiling by launching it without `blackfire run`).
-
-Advanced Usage
---------------
-
-The profiler provides a number of APIs for more advanced usage:
-
-- `IsRunningViaBlackfire()`: Returns true if your application was launched using `blackfire run`.
-- `SetAgentSocket()`: Sets the socket type and address to use for connecting to the agent. Example: `tcp://127.0.0.1:40635`
-- `SetBlackfireQuery()`: Sets the Blackfire query string to use when communicating with the agent.
-- `IsProfiling()`: Returns true if the profiler is currently profiling.
+When profiling is disabled, all profiling functions will return `ProfilerErrorProfilingDisabled`.
