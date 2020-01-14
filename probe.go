@@ -187,19 +187,13 @@ func stopProfiling() error {
 // ----------
 
 var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
-var ProfilerErrorProfilingDisabled = errors.New("Profiling is disabled because the required variables are not set. To enable profiling, run via 'blackfire run' or call SetAgentSocket() and SetBlackfireQuery() manually.")
+var ProfilerErrorProfilingDisabled = errors.New("Profiling is disabled because the required ENV variables are not set. To enable profiling, run via 'blackfire run', set BLACKFIRE_AGENT_SOCKET and BLACKFIRE_QUERY env variables, or call SetAgentSocket() and SetBlackfireQuery() manually.")
 
 func AssertCanProfile() error {
 	if len(agentSocket) == 0 || len(blackfireQuery) == 0 {
 		return ProfilerErrorProfilingDisabled
 	}
 	return nil
-}
-
-// Check if we are running via `blackfire run`
-func IsRunningViaBlackfire() bool {
-	_, isRunningBlackfire := os.LookupEnv("BLACKFIRE_AGENT_SOCKET")
-	return isRunningBlackfire
 }
 
 // Set the agent socket to connect to. Defaults to whatever is in the env BLACKFIRE_AGENT_SOCKET.
@@ -254,7 +248,7 @@ func ProfileFor(duration time.Duration) error {
 // Does the following:
 // - Profile the current process for the specified duration.
 // - Connect to the agent and upload the generated profile.
-// - Call the callback (if not null).
+// - Call the callback in a goroutine (if not null).
 func ProfileWithCallback(duration time.Duration, callback func()) error {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()

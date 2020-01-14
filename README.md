@@ -7,6 +7,12 @@ Blackfire probe into your go applications.
 You can generate as many profiles as you like, but only one profiling session
 can be active at a time.
 
+Beta Notes
+----------
+
+This is still a beta release of the go probe. As such, none of the APIs should
+be considered finalized; they may change in a future release.
+
 Prerequisites
 -------------
 
@@ -85,8 +91,6 @@ Advanced API
 
 The Blackfire probe also provides a number of APIs for more advanced needs:
 
-- `IsRunningViaBlackfire()`: Returns true if your application was launched using
-  `blackfire run`.
 - `SetAgentSocket()`: Sets the socket type and address to use for connecting to
   the agent. Example: `tcp://127.0.0.1:40635`
 - `SetBlackfireQuery()`: Sets the Blackfire query string to use when
