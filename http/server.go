@@ -26,7 +26,7 @@ func parseFloat(r *http.Request, paramName string) (value float64, isFound bool,
 	return
 }
 
-func startProfiler(w http.ResponseWriter, r *http.Request) {
+func enable(w http.ResponseWriter, r *http.Request) {
 	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
 
 	if err != nil {
@@ -41,21 +41,24 @@ func startProfiler(w http.ResponseWriter, r *http.Request) {
 		if err := blackfire.ProfileWithCallback(duration, func() {
 			log.Printf("Blackfire (HTTP): Profile complete\n")
 		}); err != nil {
-			log.Printf("Blackfire Error (startProfiler): %v\n", err)
+			log.Printf("Blackfire Error (enable): %v\n", err)
 		}
 	} else {
-		log.Printf("Blackfire (HTTP): Start profiling\n")
-		if err := blackfire.StartProfiling(); err != nil {
-			log.Printf("Blackfire Error (startProfiler): %v\n", err)
+		log.Printf("Blackfire (HTTP): Enable profiling\n")
+		if err := blackfire.Enable(); err != nil {
+			log.Printf("Blackfire Error (enable): %v\n", err)
 		}
 	}
 }
 
-func stopProfiler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Blackfire (HTTP): Stop profiling\n")
-	if err := blackfire.StopProfiling(); err != nil {
-		log.Printf("Blackfire Error (stopProfiler): %v\n", err)
-	}
+func disable(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Blackfire (HTTP): Disable profiling\n")
+	blackfire.Disable()
+}
+
+func end(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Blackfire (HTTP): End profiling\n")
+	blackfire.End()
 }
 
 // ----------
@@ -65,8 +68,9 @@ func stopProfiler(w http.ResponseWriter, r *http.Request) {
 // Start the HTTP server on the specified host and port.
 //
 // The following HTTP paths will be available:
-// - /start : Run the profiler for either 30 seconds, or the value of the "duration" parameter (parsed as a float).
-// - /stop : Stop the profiler (if running).
+// - /enable : Run the profiler for either 30 seconds, or the value of the "duration" parameter (parsed as a float).
+// - /disable : Stop the profiler (if running).
+// - /end : End the current profile and upload to Blackfire
 //
 // Supplying a hostAndPort value of "" will choose the default of ":6020"
 func StartServer(hostAndPort string) error {
@@ -88,8 +92,9 @@ func StartServer(hostAndPort string) error {
 	log.Printf("Blackfire (HTTP): Listening on [%v]. Paths are /start and /stop\n", hostAndPort)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/start", startProfiler)
-	mux.HandleFunc("/stop", stopProfiler)
+	mux.HandleFunc("/enable", enable)
+	mux.HandleFunc("/disable", disable)
+	mux.HandleFunc("/end", end)
 
 	server = new(http.Server)
 	server.Addr = hostAndPort

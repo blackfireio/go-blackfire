@@ -9,7 +9,7 @@ import (
 	"github.com/blackfireio/go-blackfire"
 )
 
-func callOnSignal(sig os.Signal, function func()) {
+func callFuncOnSignal(sig os.Signal, function func()) {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, sig)
 	go func() {
@@ -24,41 +24,54 @@ func callOnSignal(sig os.Signal, function func()) {
 // Public API
 // ----------
 
-// Set up a trigger to start profiling when the specified signal is received.
-// The profiler will profile for the specified duration and then upload the
-// result to the agent.
-func StartOnSignal(sig os.Signal, duration time.Duration) (err error) {
+// Set up a trigger to enable profiling when the specified signal is received.
+// The profiler will profile for the specified duration.
+func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 	if err = blackfire.AssertCanProfile(); err != nil {
 		return
 	}
 
 	log.Printf("Blackfire (signal): Signal [%v] triggers profiling for %v seconds\n", sig, float64(duration)/1000000000)
 
-	callOnSignal(sig, func() {
+	callFuncOnSignal(sig, func() {
 		log.Printf("Blackfire (%v): Profiling for %v seconds\n", sig, float64(duration)/1000000000)
 		if err := blackfire.ProfileWithCallback(duration, func() {
 			log.Printf("Blackfire (%v): Profile complete\n", sig)
 		}); err != nil {
-			log.Printf("Blackfire Error (profileFor): %v\n", err)
+			log.Printf("Blackfire Error (EnableOnSignal): %v\n", err)
 		}
 	})
 
 	return
 }
 
-// Set up a trigger to stop profiling when the specified signal is received.
-func StopOnSignal(sig os.Signal) (err error) {
+// Set up a trigger to disable profiling when the specified signal is received.
+func DisableOnSignal(sig os.Signal) (err error) {
 	if err = blackfire.AssertCanProfile(); err != nil {
 		return
 	}
 
 	log.Printf("Blackfire (signal): Signal [%v] stops profiling\n", sig)
 
-	callOnSignal(sig, func() {
-		log.Printf("Blackfire (%v): Stop profiling\n", sig)
-		if err := blackfire.StopProfiling(); err != nil {
-			log.Printf("Blackfire Error (StopOnSignal): %v\n", err)
-		}
+	callFuncOnSignal(sig, func() {
+		log.Printf("Blackfire (%v): Disable profiling\n", sig)
+		blackfire.Disable()
+	})
+	return
+}
+
+// Set up a trigger to end the current profile and upload to Blackfire when the
+// specified signal is received.
+func EndOnSignal(sig os.Signal) (err error) {
+	if err = blackfire.AssertCanProfile(); err != nil {
+		return
+	}
+
+	log.Printf("Blackfire (signal): Signal [%v] ends the current profile\n", sig)
+
+	callFuncOnSignal(sig, func() {
+		log.Printf("Blackfire (%v): End profile\n", sig)
+		blackfire.End()
 	})
 	return
 }

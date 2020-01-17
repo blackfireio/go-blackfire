@@ -17,15 +17,26 @@ import (
 	"github.com/blackfireio/osinfo"
 )
 
-var maxProfileDuration time.Duration = time.Minute * 30
+const DefaultMaxProfileDuration = time.Minute * 10
+
+type profilerState int
+
+const (
+	profilerStateIdle profilerState = iota
+	profilerStateProfiling
+	profilerStateSending
+)
+
+var profilerMutex sync.Mutex
+var triggerDisableProfilingChan chan bool
+var currentState profilerState
+var endOnNextProfile bool
 
 var agentSocket string
 var blackfireQuery string
+var maxProfileDuration = DefaultMaxProfileDuration
 var cpuProfileBuffer bytes.Buffer
-var stopProfilingTriggerChan chan bool
-var isProfiling bool
 var profileCount = 0
-var profilerMutex sync.Mutex
 
 func init() {
 	agentSocket = os.Getenv("BLACKFIRE_AGENT_SOCKET")
@@ -127,7 +138,7 @@ func sendPrologue(conn net.Conn) error {
 }
 
 func startProfiling() error {
-	if isProfiling {
+	if currentState != profilerStateIdle {
 		return ProfilerErrorAlreadyProfiling
 	}
 
@@ -139,17 +150,34 @@ func startProfiling() error {
 		return err
 	}
 
-	isProfiling = true
+	endOnNextProfile = false
+	currentState = profilerStateProfiling
 	return nil
 }
 
-func stopProfiling() error {
-	if !isProfiling {
-		return nil
+func stopProfiling() {
+	if currentState != profilerStateProfiling {
+		return
 	}
 
 	pprof.StopCPUProfile()
-	isProfiling = false
+	currentState = profilerStateIdle
+	return
+}
+
+func endProfile() error {
+	if currentState == profilerStateSending {
+		stopProfiling()
+	}
+
+	if currentState != profilerStateIdle {
+		return nil
+	}
+
+	currentState = profilerStateSending
+	defer func() {
+		currentState = profilerStateIdle
+	}()
 
 	profile, err := pprof_reader.ReadFromPProf(&cpuProfileBuffer)
 	if err != nil {
@@ -182,6 +210,29 @@ func stopProfiling() error {
 	return nil
 }
 
+func triggerProfilerDisable() {
+	channel := triggerDisableProfilingChan
+	triggerDisableProfilingChan = make(chan bool)
+	channel <- true
+}
+
+func onProfileDisableTriggered(callback func()) {
+	profilerMutex.Lock()
+	defer profilerMutex.Unlock()
+
+	if endOnNextProfile {
+		if err := endProfile(); err != nil {
+			log.Printf("Blackfire Error (ProfileWithCallback): %v", err)
+		}
+	} else {
+		stopProfiling()
+	}
+
+	if callback != nil {
+		go callback()
+	}
+}
+
 // ----------
 // Public API
 // ----------
@@ -207,35 +258,52 @@ func SetBlackfireQuery(newValue string) {
 	blackfireQuery = newValue
 }
 
-// Call this if you need to profile for longer than the default maximum (30 minutes)
+// Call this if you need to profile for longer than the default maximum from DefaultMaxProfileDuration
 func SetMaxProfileDuration(duration time.Duration) {
 	maxProfileDuration = duration
 }
 
 // Check if the profiler is running. Only one profiler may run at a time.
 func IsProfiling() bool {
-	return isProfiling
+	return currentState != profilerStateIdle
 }
 
 // Start profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
-// allowed duration (30 minutes or whatever you set via SetMaxProfileDuration()).
-func StartProfiling() error {
+// allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
+func Enable() error {
 	return ProfileFor(maxProfileDuration)
 }
 
 // Stop profiling and upload the result to the agent.
-func StopProfiling() (err error) {
+func Disable() {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
-	if !isProfiling {
+	if currentState != profilerStateProfiling {
 		return
 	}
 
-	channel := stopProfilingTriggerChan
-	stopProfilingTriggerChan = make(chan bool)
-	channel <- true
+	triggerProfilerDisable()
+	return
+}
+
+// Stop profiling and upload the result to the agent.
+func End() {
+	profilerMutex.Lock()
+	defer profilerMutex.Unlock()
+
+	switch currentState {
+	case profilerStateProfiling:
+		endOnNextProfile = true
+		triggerProfilerDisable()
+	case profilerStateIdle:
+		endOnNextProfile = true
+		go func() {
+			onProfileDisableTriggered(nil)
+		}()
+	}
+
 	return
 }
 
@@ -262,18 +330,10 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 	}
 
 	channel := make(chan bool)
-	stopProfilingTriggerChan = channel
 
 	go func() {
-		<-stopProfilingTriggerChan
-		profilerMutex.Lock()
-		defer profilerMutex.Unlock()
-		if err := stopProfiling(); err != nil {
-			log.Printf("Blackfire Error (ProfileWithCallback): %v", err)
-		}
-		if callback != nil {
-			go callback()
-		}
+		<-channel
+		onProfileDisableTriggered(callback)
 	}()
 
 	go func() {
@@ -281,15 +341,7 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 		channel <- true
 	}()
 
+	triggerDisableProfilingChan = channel
+
 	return nil
-}
-
-// Alias to StartProfiling
-func Enable() error {
-	return StartProfiling()
-}
-
-// Alias to StopProfiling
-func Disable() error {
-	return StopProfiling()
 }
