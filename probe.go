@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"regexp"
 	"runtime/pprof"
 	"sync"
@@ -32,22 +31,19 @@ var triggerDisableProfilingChan chan bool
 var currentState profilerState
 var endOnNextProfile bool
 
-var agentSocket string
-var blackfireQuery string
 var maxProfileDuration = DefaultMaxProfileDuration
 var cpuProfileBuffer bytes.Buffer
 var profileCount = 0
 
 func init() {
-	agentSocket = os.Getenv("BLACKFIRE_AGENT_SOCKET")
-	blackfireQuery = os.Getenv("BLACKFIRE_QUERY")
+	configure(nil, "")
 }
 
 func connectToAgent() (net.Conn, error) {
 	re := regexp.MustCompile(`^([^:]+)://(.*)`)
-	matches := re.FindAllStringSubmatch(agentSocket, -1)
+	matches := re.FindAllStringSubmatch(blackfireConfig.AgentSocket, -1)
 	if matches == nil {
-		return nil, fmt.Errorf("Could not parse agent socket value: [%v]", agentSocket)
+		return nil, fmt.Errorf("Could not parse agent socket value: [%v]", blackfireConfig.AgentSocket)
 	}
 	network := matches[0][1]
 	address := matches[0][2]
@@ -114,13 +110,13 @@ func getOSHeader() string {
 }
 
 func sendPrologue(conn net.Conn) error {
-	if blackfireQuery == "" {
+	if blackfireConfig.BlackfireQuery == "" {
 		return fmt.Errorf("Blackfire query not set")
 	}
 
-	fullBlackfireQuery := blackfireQuery
+	fullBlackfireQuery := blackfireConfig.BlackfireQuery
 	if profileCount > 0 {
-		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", blackfireQuery, profileCount)
+		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", blackfireConfig.BlackfireQuery, profileCount)
 	}
 
 	sendHeaders := make(map[string]string)
@@ -241,21 +237,23 @@ var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently
 var ProfilerErrorProfilingDisabled = errors.New("Profiling is disabled because the required ENV variables are not set. To enable profiling, run via 'blackfire run', set BLACKFIRE_AGENT_SOCKET and BLACKFIRE_QUERY env variables, or call SetAgentSocket() and SetBlackfireQuery() manually.")
 
 func AssertCanProfile() error {
-	if len(agentSocket) == 0 || len(blackfireQuery) == 0 {
+	if len(blackfireConfig.AgentSocket) == 0 || len(blackfireConfig.BlackfireQuery) == 0 {
 		return ProfilerErrorProfilingDisabled
 	}
 	return nil
 }
 
-// Set the agent socket to connect to. Defaults to whatever is in the env BLACKFIRE_AGENT_SOCKET.
-// Example: tcp://127.0.0.1:40635
-func SetAgentSocket(newValue string) {
-	agentSocket = newValue
-}
-
-// Set the blackfire query contents. Defaults to the env BLACKFIRE_QUERY.
-func SetBlackfireQuery(newValue string) {
-	blackfireQuery = newValue
+// Configure the probe. This will automatically be called with (nil, nil) upon
+// loading this module. It can be called multiple times before using the probe.
+//
+// Any "zero" values in manualConfig will not be copied to the final configuration.
+// When you call new(BlackfireConfiguration), all values are initialized to their
+// "zero" values. https://tour.golang.org/basics/12
+//
+// manualConfig and iniFilePath can be nil, in which case the defaults or ENV
+// vars will be used. The defaults for each depend on the current operating system.
+func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) {
+	configure(manualConfig, iniFilePath)
 }
 
 // Call this if you need to profile for longer than the default maximum from DefaultMaxProfileDuration
