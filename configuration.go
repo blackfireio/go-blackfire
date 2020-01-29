@@ -3,6 +3,7 @@ package blackfire
 import (
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"path"
 	"reflect"
@@ -18,23 +19,37 @@ type BlackfireConfiguration struct {
 	// Time before dropping an unresponsive agent connection (default 250ms)
 	AgentTimeout time.Duration
 	// The socket to use when connecting to the Blackfire agent (default depends on OS)
-	AgentSocket    string
+	AgentSocket string
+	// The Blackfire query string to be sent with any profiles. This is either
+	// provided by the `blackfire run` command in an ENV variable, or acquired
+	// via a signing request to Blackfire. You won't need to set this manually.
 	BlackfireQuery string
 	// Client ID to authenticate with the Blackfire API
 	ClientId string
 	// Client token to authenticate with the Blackfire API
 	ClientToken string
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io/)
-	Endpoint string
+	HTTPEndpoint *url.URL
 	// Path to the log file (default go-probe.log)
 	LogFile string
 	// Log verbosity 4: debug, 3: info, 2: warning, 1: error (default 1)
 	LogLevel int
+	// The maximum duration of a profile. A profile operation can never exceed
+	// this duration (default 10 minutes).
+	// This guards against runaway profile operations.
+	MaxProfileDuration time.Duration
 }
 
-var blackfireConfig BlackfireConfiguration
+func (this *BlackfireConfiguration) setEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	this.HTTPEndpoint = u
+	return nil
+}
 
-func getDefaultIniPath() string {
+func (this *BlackfireConfiguration) getDefaultIniPath() string {
 	getIniPath := func(dir string) string {
 		fileName := ".blackfire.ini"
 		filePath := path.Join(path.Dir(dir), fileName)
@@ -73,74 +88,76 @@ func getDefaultIniPath() string {
 	return ""
 }
 
-func configureFromDefaults(config *BlackfireConfiguration) {
+func (this *BlackfireConfiguration) configureFromDefaults() {
 	switch runtime.GOOS {
 	case "windows":
-		config.AgentSocket = "tcp://127.0.0.1:8307"
+		this.AgentSocket = "tcp://127.0.0.1:8307"
 	case "darwin":
-		config.AgentSocket = "unix:///usr/local/var/run/blackfire-agent.sock"
+		this.AgentSocket = "unix:///usr/local/var/run/blackfire-agent.sock"
 	case "linux":
-		config.AgentSocket = "unix:///var/run/blackfire/agent.sock"
+		this.AgentSocket = "unix:///var/run/blackfire/agent.sock"
 	case "freebsd":
-		config.AgentSocket = "unix:///var/run/blackfire/agent.sock"
+		this.AgentSocket = "unix:///var/run/blackfire/agent.sock"
 	}
 
-	config.Endpoint = "https://blackfire.io/"
-	config.LogFile = "go-probe.log"
-	config.LogLevel = 1
-	config.AgentTimeout = time.Millisecond * 250
+	this.setEndpoint("https://blackfire.io/")
+	this.LogFile = "go-probe.log"
+	this.LogLevel = 1
+	this.AgentTimeout = time.Millisecond * 250
+	this.MaxProfileDuration = time.Minute * 10
 }
 
-func configureFromEnv(config *BlackfireConfiguration) {
+func (this *BlackfireConfiguration) configureFromEnv() {
 	if v := os.Getenv("BLACKFIRE_AGENT_SOCKET"); v != "" {
-		config.AgentSocket = v
+		this.AgentSocket = v
 	}
 
 	if v := os.Getenv("BLACKFIRE_QUERY"); v != "" {
-		config.BlackfireQuery = v
+		this.BlackfireQuery = v
 	}
 
 	if v := os.Getenv("BLACKFIRE_CLIENT_ID"); v != "" {
-		config.ClientId = v
+		this.ClientId = v
 	}
 
 	if v := os.Getenv("BLACKFIRE_CLIENT_TOKEN"); v != "" {
-		config.ClientToken = v
+		this.ClientToken = v
 	}
 
 	if v := os.Getenv("BLACKFIRE_ENDPOINT"); v != "" {
-		config.Endpoint = v
+		if err := this.setEndpoint(v); err != nil {
+			log.Printf("Warning: Unable to set from env var BLACKFIRE_ENDPOINT %v: %v", v, err)
+		}
 	}
 
 	if v := os.Getenv("BLACKFIRE_LOG_FILE"); v != "" {
-		config.LogFile = v
+		this.LogFile = v
 	}
 
 	if v := os.Getenv("BLACKFIRE_LOG_LEVEL"); v != "" {
 		level, err := strconv.Atoi(v)
 		if err != nil {
-			log.Printf("Warning: env BLACKFIRE_LOG_LEVEL value %v: %v", v, err)
+			log.Printf("Warning: Unable to set from env var BLACKFIRE_LOG_LEVEL %v: %v", v, err)
 		} else {
-			config.LogLevel = level
+			this.LogLevel = level
 		}
 	}
 }
 
-func parseSeconds(value string) time.Duration {
+func (this *BlackfireConfiguration) parseSeconds(value string) (time.Duration, error) {
 	re := regexp.MustCompile(`([0-9.]+)`)
 	found := re.FindStringSubmatch(value)
 
 	seconds, err := strconv.ParseFloat(found[1], 64)
 	if err != nil {
-		log.Printf("Error: blackfire.ini time value: %v: Must be numeric", value)
-		return 0
+		return 0, err
 	}
-	return time.Duration(float64(time.Second) * seconds)
+	return time.Duration(float64(time.Second) * seconds), nil
 }
 
-func configureFromIniFile(config *BlackfireConfiguration, path string) {
+func (this *BlackfireConfiguration) configureFromIniFile(path string) {
 	if path == "" {
-		if path = getDefaultIniPath(); path == "" {
+		if path = this.getDefaultIniPath(); path == "" {
 			return
 		}
 	}
@@ -154,24 +171,29 @@ func configureFromIniFile(config *BlackfireConfiguration, path string) {
 	section := iniConfig.Section("blackfire")
 
 	if section.HasKey("client-id") {
-		config.ClientId = section.Key("client-id").String()
+		this.ClientId = section.Key("client-id").String()
 	}
 
 	if section.HasKey("client-token") {
-		config.ClientToken = section.Key("client-token").String()
+		this.ClientToken = section.Key("client-token").String()
 	}
 
 	if section.HasKey("endpoint") {
-		config.Endpoint = section.Key("endpoint").String()
+		if err := this.setEndpoint(section.Key("endpoint").String()); err != nil {
+			log.Printf("Warning: Unable to set from ini file %v, endpoint %v: %v", path, section.Key("endpoint"), err)
+		}
 	}
 
 	if section.HasKey("timeout") {
-		config.AgentTimeout = parseSeconds(section.Key("timeout").String())
+		var err error
+		if this.AgentTimeout, err = this.parseSeconds(section.Key("timeout").String()); err != nil {
+			log.Printf("Warning: Unable to set from ini file %v, timeout %v: %v", path, section.Key("timeout"), err)
+		}
 	}
 }
 
 // Necessary because go 1.12 doesn't have reflect.IsZero
-func valueIsZero(v reflect.Value) bool {
+func (this *BlackfireConfiguration) valueIsZero(v reflect.Value) bool {
 	if !v.IsValid() {
 		return false
 	}
@@ -194,14 +216,14 @@ func valueIsZero(v reflect.Value) bool {
 		return v.Len() == 0
 	case reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			if !valueIsZero(v.Index(i)) {
+			if !this.valueIsZero(v.Index(i)) {
 				return false
 			}
 		}
 		return true
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
-			if !valueIsZero(v.Field(i)) {
+			if !this.valueIsZero(v.Field(i)) {
 				return false
 			}
 		}
@@ -210,25 +232,61 @@ func valueIsZero(v reflect.Value) bool {
 	return false
 }
 
-func configureFromConfiguration(srcConfig *BlackfireConfiguration, dstConfig *BlackfireConfiguration) {
+func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *BlackfireConfiguration) {
 	if srcConfig == nil {
 		return
 	}
 
 	sv := reflect.ValueOf(srcConfig).Elem()
-	dv := reflect.ValueOf(dstConfig).Elem()
+	dv := reflect.ValueOf(this).Elem()
 	for i := 0; i < sv.NumField(); i++ {
 		sField := sv.Field(i)
 		dField := dv.Field(i)
-		if !valueIsZero(sField) {
+		if !this.valueIsZero(sField) {
 			dField.Set(sField)
 		}
 	}
 }
 
-func configure(manualConfig *BlackfireConfiguration, iniFilePath string) {
-	configureFromDefaults(&blackfireConfig)
-	configureFromIniFile(&blackfireConfig, iniFilePath)
-	configureFromEnv(&blackfireConfig)
-	configureFromConfiguration(manualConfig, &blackfireConfig)
+// ----------
+// Public API
+// ----------
+
+// Initialize this Blackfire configuration.
+// Configuration is initialized in a set order, with later steps overriding
+// earlier steps. Missing or zero values will not be applied.
+// See: Zero values https://tour.golang.org/basics/12
+//
+// Initialization order:
+// * Defaults
+// * INI file
+// * Environment variables
+// * Manual configuration
+//
+// manualConfig will be ignored if nil.
+// iniFilePath will be ignored if "".
+func NewBlackfireConfiguration(manualConfig *BlackfireConfiguration, iniFilePath string) (this *BlackfireConfiguration) {
+	this = new(BlackfireConfiguration)
+	this.Init(manualConfig, iniFilePath)
+	return this
+}
+
+// Initialize this Blackfire configuration.
+// Configuration is initialized in a set order, with later steps overriding
+// earlier steps. Missing or zero values will not be applied.
+// See: Zero values https://tour.golang.org/basics/12
+//
+// Initialization order:
+// * Defaults
+// * INI file
+// * Environment variables
+// * Manual configuration
+//
+// manualConfig will be ignored if nil.
+// iniFilePath will be ignored if "".
+func (this *BlackfireConfiguration) Init(manualConfig *BlackfireConfiguration, iniFilePath string) {
+	this.configureFromDefaults()
+	this.configureFromIniFile(iniFilePath)
+	this.configureFromEnv()
+	this.configureFromConfiguration(manualConfig)
 }

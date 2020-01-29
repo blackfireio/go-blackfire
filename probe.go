@@ -1,22 +1,16 @@
 package blackfire
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"log"
-	"net"
-	"regexp"
 	"runtime/pprof"
 	"sync"
 	"time"
 
 	"github.com/blackfireio/go-blackfire/pprof_reader"
-	"github.com/blackfireio/osinfo"
 )
-
-const DefaultMaxProfileDuration = time.Minute * 10
 
 type profilerState int
 
@@ -26,112 +20,16 @@ const (
 	profilerStateSending
 )
 
-var profilerMutex sync.Mutex
-var triggerDisableProfilingChan chan bool
-var currentState profilerState
-var endOnNextProfile bool
-
-var maxProfileDuration = DefaultMaxProfileDuration
-var cpuProfileBuffer bytes.Buffer
-var profileCount = 0
-
-func init() {
-	configure(nil, "")
-}
-
-func connectToAgent() (net.Conn, error) {
-	re := regexp.MustCompile(`^([^:]+)://(.*)`)
-	matches := re.FindAllStringSubmatch(blackfireConfig.AgentSocket, -1)
-	if matches == nil {
-		return nil, fmt.Errorf("Could not parse agent socket value: [%v]", blackfireConfig.AgentSocket)
-	}
-	network := matches[0][1]
-	address := matches[0][2]
-
-	return net.Dial(network, address)
-}
-
-func readHeaders(conn net.Conn) (map[string]string, error) {
-	re := regexp.MustCompile(`^([^:]+):(.*)`)
-	headers := make(map[string]string)
-	r := bufio.NewReader(conn)
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		if line == "\n" {
-			break
-		}
-		matches := re.FindAllStringSubmatch(line, -1)
-		if matches == nil {
-			return nil, fmt.Errorf("Could not parse header: [%v]", line)
-		}
-		k := matches[0][1]
-		v := matches[0][2]
-
-		headers[k] = v
-	}
-
-	return headers, nil
-}
-
-func writeHeaders(headers map[string]string, conn net.Conn) error {
-	w := bufio.NewWriter(conn)
-	for k, v := range headers {
-		line := fmt.Sprintf("%v: %v\n", k, v)
-		_, err := w.WriteString(line)
-		if err != nil {
-			return err
-		}
-	}
-	_, err := w.WriteString("\n")
-	if err != nil {
-		return err
-	}
-	return w.Flush()
-}
-
-func getOSHeader() string {
-	info, err := osinfo.GetOSInfo()
-	if err != nil {
-		log.Printf("OSINFO: %v\n", err)
-	}
-	codename := info.Codename
-	if len(codename) > 0 {
-		codename = " codename=" + codename
-	}
-	build := info.Build
-	if len(build) > 0 {
-		build = " build=" + build
-	}
-
-	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build)
-}
-
-func sendPrologue(conn net.Conn) error {
-	if blackfireConfig.BlackfireQuery == "" {
-		return fmt.Errorf("Blackfire query not set")
-	}
-
-	fullBlackfireQuery := blackfireConfig.BlackfireQuery
-	if profileCount > 0 {
-		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", blackfireConfig.BlackfireQuery, profileCount)
-	}
-
-	sendHeaders := make(map[string]string)
-	sendHeaders["Blackfire-Query"] = fullBlackfireQuery
-	sendHeaders["Blackfire-Probe"] = "go-1.13.3"
-	sendHeaders["os-version"] = getOSHeader()
-	if err := writeHeaders(sendHeaders, conn); err != nil {
-		return err
-	}
-
-	// TODO: Maybe validate the headers rather than ignoring them?
-	_, err := readHeaders(conn)
-
-	return err
-}
+var (
+	blackfireConfig             *BlackfireConfiguration
+	agentClient                 *AgentClient
+	isConfigured                bool
+	profilerMutex               sync.Mutex
+	triggerDisableProfilingChan chan bool
+	currentState                profilerState
+	endOnNextProfile            bool
+	cpuProfileBuffer            bytes.Buffer
+)
 
 func startProfiling() error {
 	if currentState != profilerStateIdle {
@@ -188,21 +86,15 @@ func endProfile() error {
 		return nil
 	}
 
-	conn, err := connectToAgent()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	if err := sendPrologue(conn); err != nil {
+	profileBuffer := new(bytes.Buffer)
+	if err := pprof_reader.WriteBFFormat(profile, profile.BiggestImpactEntryPoint(), profileBuffer); err != nil {
 		return err
 	}
 
-	if err := pprof_reader.WriteBFFormat(profile, profile.BiggestImpactEntryPoint(), conn); err != nil {
+	if err := agentClient.SendProfile(profileBuffer.Bytes()); err != nil {
 		return err
 	}
 
-	profileCount++
 	return nil
 }
 
@@ -218,7 +110,7 @@ func onProfileDisableTriggered(callback func()) {
 
 	if endOnNextProfile {
 		if err := endProfile(); err != nil {
-			log.Printf("Blackfire Error (ProfileWithCallback): %v", err)
+			log.Printf("Error: blackfire.endProfile: %v", err)
 		}
 	} else {
 		stopProfiling()
@@ -233,32 +125,45 @@ func onProfileDisableTriggered(callback func()) {
 // Public API
 // ----------
 
-var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
-var ProfilerErrorProfilingDisabled = errors.New("Profiling is disabled because the required ENV variables are not set. To enable profiling, run via 'blackfire run', set BLACKFIRE_AGENT_SOCKET and BLACKFIRE_QUERY env variables, or call SetAgentSocket() and SetBlackfireQuery() manually.")
+var ProfilerErrorNotConfigured = errors.New("Blackfire: The profiler has not been configured. Please call blackfire.Configure() before calling other functions.")
+var ProfilerErrorAlreadyProfiling = errors.New("Blackfire: A Blackfire profile is currently in progress. Please wait for it to finish.")
 
 func AssertCanProfile() error {
-	if len(blackfireConfig.AgentSocket) == 0 || len(blackfireConfig.BlackfireQuery) == 0 {
-		return ProfilerErrorProfilingDisabled
+	if !isConfigured {
+		return ProfilerErrorNotConfigured
 	}
 	return nil
 }
 
-// Configure the probe. This will automatically be called with (nil, nil) upon
-// loading this module. It can be called multiple times before using the probe.
+// Configure the probe. This must be called before any other functions.
+// Configuration is initialized in a set order, with later steps overriding
+// earlier steps. Missing or zero values will not be applied.
+// See: Zero values https://tour.golang.org/basics/12
 //
-// Any "zero" values in manualConfig will not be copied to the final configuration.
-// When you call new(BlackfireConfiguration), all values are initialized to their
-// "zero" values. https://tour.golang.org/basics/12
+// Initialization order:
+// * Defaults
+// * INI file
+// * Environment variables
+// * Manual configuration
 //
-// manualConfig and iniFilePath can be nil, in which case the defaults or ENV
-// vars will be used. The defaults for each depend on the current operating system.
-func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) {
-	configure(manualConfig, iniFilePath)
-}
-
-// Call this if you need to profile for longer than the default maximum from DefaultMaxProfileDuration
-func SetMaxProfileDuration(duration time.Duration) {
-	maxProfileDuration = duration
+// manualConfig will be ignored if nil.
+// iniFilePath will be ignored if "".
+func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err error) {
+	profilerMutex.Lock()
+	defer profilerMutex.Unlock()
+	blackfireConfig = NewBlackfireConfiguration(manualConfig, iniFilePath)
+	if blackfireConfig.BlackfireQuery == "" {
+		if blackfireConfig.ClientId == "" || blackfireConfig.ClientToken == "" {
+			return fmt.Errorf("Error: Blackfire: No Blackfire query or client ID/token found. Please add one of these to your configuration.")
+		}
+		agentClient, err = NewAgentClientWithSigningRequest(blackfireConfig.AgentSocket, blackfireConfig.HTTPEndpoint, blackfireConfig.ClientId, blackfireConfig.ClientToken)
+	} else {
+		agentClient, err = NewAgentClient(blackfireConfig.AgentSocket, blackfireConfig.BlackfireQuery)
+	}
+	if err == nil {
+		isConfigured = true
+	}
+	return
 }
 
 // Check if the profiler is running. Only one profiler may run at a time.
@@ -266,11 +171,50 @@ func IsProfiling() bool {
 	return currentState != profilerStateIdle
 }
 
+// Does the following:
+// - Profile the current process for the specified duration.
+// - Connect to the agent and upload the generated profile.
+// - Call the callback in a goroutine (if not null).
+func ProfileWithCallback(duration time.Duration, callback func()) error {
+	profilerMutex.Lock()
+	defer profilerMutex.Unlock()
+
+	if duration > blackfireConfig.MaxProfileDuration {
+		duration = blackfireConfig.MaxProfileDuration
+	}
+
+	if err := startProfiling(); err != nil {
+		return err
+	}
+
+	channel := make(chan bool)
+
+	go func() {
+		<-channel
+		onProfileDisableTriggered(callback)
+	}()
+
+	go func() {
+		<-time.After(duration)
+		channel <- true
+	}()
+
+	triggerDisableProfilingChan = channel
+
+	return nil
+}
+
+// Profile the current process for the specified duration, then
+// connect to the agent and upload the generated profile.
+func ProfileFor(duration time.Duration) error {
+	return ProfileWithCallback(duration, nil)
+}
+
 // Start profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
 func Enable() error {
-	return ProfileFor(maxProfileDuration)
+	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
 
 // Stop profiling and upload the result to the agent.
@@ -303,43 +247,4 @@ func End() {
 	}
 
 	return
-}
-
-// Profile the current process for the specified duration, then
-// connect to the agent and upload the generated profile.
-func ProfileFor(duration time.Duration) error {
-	return ProfileWithCallback(duration, nil)
-}
-
-// Does the following:
-// - Profile the current process for the specified duration.
-// - Connect to the agent and upload the generated profile.
-// - Call the callback in a goroutine (if not null).
-func ProfileWithCallback(duration time.Duration, callback func()) error {
-	profilerMutex.Lock()
-	defer profilerMutex.Unlock()
-
-	if duration > maxProfileDuration {
-		duration = maxProfileDuration
-	}
-
-	if err := startProfiling(); err != nil {
-		return err
-	}
-
-	channel := make(chan bool)
-
-	go func() {
-		<-channel
-		onProfileDisableTriggered(callback)
-	}()
-
-	go func() {
-		<-time.After(duration)
-		channel <- true
-	}()
-
-	triggerDisableProfilingChan = channel
-
-	return nil
 }
