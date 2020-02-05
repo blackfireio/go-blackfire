@@ -57,7 +57,7 @@ func unsetEnv() {
 
 func TestConfigurationDefaults(t *testing.T) {
 	config := NewBlackfireConfiguration(nil, "")
-	assertEqual(t, "https://blackfire.io/", config.HTTPEndpoint.String())
+	assertEqual(t, "https://blackfire.io", config.HTTPEndpoint.String())
 	assertEqual(t, "go-probe.log", config.LogFile)
 	assertEqual(t, 1, config.LogLevel)
 	assertEqual(t, time.Millisecond*250, config.AgentTimeout)
@@ -143,7 +143,7 @@ func TestConfigurationMixed(t *testing.T) {
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)
 	assertEqual(t, "client_token_manual", config.ClientToken)
-	assertEqual(t, "https://blackfire.io/", config.HTTPEndpoint.String())
+	assertEqual(t, "https://blackfire.io", config.HTTPEndpoint.String())
 	assertEqual(t, "/var/blackfire-env.log", config.LogFile)
 	assertEqual(t, 3, config.LogLevel)
 	assertEqual(t, time.Millisecond*250, config.AgentTimeout)
@@ -153,7 +153,7 @@ func TestConfigurationMixed(t *testing.T) {
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)
 	assertEqual(t, "client_token_manual", config.ClientToken)
-	assertEqual(t, "https://blackfire.io/", config.HTTPEndpoint.String())
+	assertEqual(t, "https://blackfire.io", config.HTTPEndpoint.String())
 	assertEqual(t, "/var/blackfire-env.log", config.LogFile)
 	assertEqual(t, 3, config.LogLevel)
 	assertEqual(t, time.Second*1, config.AgentTimeout)

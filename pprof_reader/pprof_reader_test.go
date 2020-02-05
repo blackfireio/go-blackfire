@@ -20,7 +20,7 @@ func toLineSet(data []byte) map[string]bool {
 }
 
 func TestConversion(t *testing.T) {
-	filename := "fixtures/cpu.prof"
+	filename := "fixtures/wt.pprof.gz"
 	fr, err := os.Open(filename)
 	if err != nil {
 		t.Error(err)
@@ -39,7 +39,7 @@ func TestConversion(t *testing.T) {
 		t.Errorf("Expected %v entry points but got %v", expectedEntryPointCount, len(profile.EntryPoints))
 	}
 
-	expectedBytes, err := ioutil.ReadFile("fixtures/cpu.blackfireprof")
+	expectedBytes, err := ioutil.ReadFile("fixtures/wt.bf")
 	if err != nil {
 		t.Error(err)
 		return

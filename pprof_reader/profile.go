@@ -194,7 +194,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 
 	entryPoint := profile.EntryPoints[rootNodeName]
 	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v 0 0 0\n", name, edge.Count, edge.CumulativeValue/1000000)); err != nil {
+		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v 0 0 0\n", name, edge.Count, edge.CumulativeValue/1000)); err != nil {
 			return err
 		}
 

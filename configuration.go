@@ -28,7 +28,7 @@ type BlackfireConfiguration struct {
 	ClientId string
 	// Client token to authenticate with the Blackfire API
 	ClientToken string
-	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io/)
+	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
 	HTTPEndpoint *url.URL
 	// Path to the log file (default go-probe.log)
 	LogFile string
@@ -51,8 +51,11 @@ func (this *BlackfireConfiguration) setEndpoint(endpoint string) error {
 
 func (this *BlackfireConfiguration) getDefaultIniPath() string {
 	getIniPath := func(dir string) string {
+		if dir == "" {
+			return ""
+		}
 		fileName := ".blackfire.ini"
-		filePath := path.Join(path.Dir(dir), fileName)
+		filePath := path.Join(path.Clean(dir), fileName)
 		_, err := os.Stat(filePath)
 		if err != nil {
 			return ""
@@ -100,7 +103,7 @@ func (this *BlackfireConfiguration) configureFromDefaults() {
 		this.AgentSocket = "unix:///var/run/blackfire/agent.sock"
 	}
 
-	this.setEndpoint("https://blackfire.io/")
+	this.setEndpoint("https://blackfire.io")
 	this.LogFile = "go-probe.log"
 	this.LogLevel = 1
 	this.AgentTimeout = time.Millisecond * 250
