@@ -44,7 +44,7 @@ func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (
 	request.Header.Add("Authorization", signingAuth)
 	client := http.DefaultClient
 	response, err = client.Do(request)
-	if response.StatusCode/100 != 2 {
+	if response.StatusCode != 201 {
 		err = fmt.Errorf("Signing request to %v failed: %v", signingURL, response.Status)
 		return
 	}

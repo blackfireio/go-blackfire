@@ -4,9 +4,14 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
+	"runtime"
 	"sort"
+	"strings"
 
 	pprof "github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
+	"github.com/blackfireio/osinfo"
 )
 
 // Edge represents an edge of the graph, which is a call from one function to another.
@@ -181,20 +186,56 @@ func ReadFromPProf(r io.Reader) (*Profile, error) {
 	return profile, nil
 }
 
+func generateContextString() string {
+	s := strings.Builder{}
+	s.WriteString("script=")
+	s.WriteString(url.QueryEscape(os.Args[0]))
+	for i := 1; i < len(os.Args); i++ {
+		argv := url.QueryEscape(fmt.Sprintf("argv[%v]", i))
+		value := url.QueryEscape(os.Args[i])
+		s.WriteString(fmt.Sprintf("&%v=%v", argv, value))
+	}
+	return s.String()
+}
+
 // Write a parsed profile out as a Blackfire profile.
 func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
+	osInfo, err := osinfo.GetOSInfo()
+	if err != nil {
+		return err
+	}
+
+	// TODO: Profile title should be user-generated somehow
+	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%v"}}`, os.Args[0])
+
+	headers := make(map[string]string)
+	headers["Cost-Dimensions"] = "wt"
+	headers["graph-root-id"] = rootNodeName
+	headers["probed-os"] = osInfo.Name
+	headers["probed-language"] = "go"
+	headers["probed-runtime"] = runtime.Version()
+	// headers["Profile-Title"] = profileTitle
+	headers["Context"] = generateContextString()
+
 	bufW := bufio.NewWriter(w)
 
 	if _, err := bufW.WriteString("file-format: BlackfireProbe\n"); err != nil {
 		return err
 	}
-	if _, err := bufW.WriteString(fmt.Sprintf("Cost-Dimensions: wt cpu mu pmu\ngraph-root-id: %v\n\n", rootNodeName)); err != nil {
+
+	for k, v := range headers {
+		if _, err := bufW.WriteString(fmt.Sprintf("%v: %v\n", k, v)); err != nil {
+			return err
+		}
+	}
+
+	if _, err := bufW.WriteString("\n"); err != nil {
 		return err
 	}
 
 	entryPoint := profile.EntryPoints[rootNodeName]
 	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v 0 0 0\n", name, edge.Count, edge.CumulativeValue/1000)); err != nil {
+		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v\n", name, edge.Count, edge.CumulativeValue/1000)); err != nil {
 			return err
 		}
 
