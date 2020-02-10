@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -37,13 +36,18 @@ func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (
 	signingAuth := getSigningAuthorization(clientID, clientToken)
 	var request *http.Request
 	var response *http.Response
+	Log.Debug().Msgf("Blackfire: Get authorization from %v", signingURL)
 	request, err = http.NewRequest("POST", signingURL.String(), nil)
 	if err != nil {
 		return
 	}
 	request.Header.Add("Authorization", signingAuth)
+	Log.Debug().Msg("Blackfire: Send signing request")
 	client := http.DefaultClient
 	response, err = client.Do(request)
+	if err != nil {
+		return
+	}
 	if response.StatusCode != 201 {
 		err = fmt.Errorf("Signing request to %v failed: %v", signingURL, response.Status)
 		return
@@ -53,6 +57,7 @@ func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (
 	if err != nil {
 		return
 	}
+	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
 	err = json.Unmarshal(responseData, &signingResponse)
 	if err != nil {
 		err = fmt.Errorf("JSON error: %v", err)
@@ -162,10 +167,10 @@ func writeProfileSendHeaders(headers map[string]string, conn net.Conn) error {
 	return w.Flush()
 }
 
-func getProfileOSHeader() string {
+func getProfileOSHeader() (string, error) {
 	info, err := osinfo.GetOSInfo()
 	if err != nil {
-		log.Printf("OSINFO: %v\n", err)
+		return "", err
 	}
 	codename := info.Codename
 	if len(codename) > 0 {
@@ -176,10 +181,10 @@ func getProfileOSHeader() string {
 		build = " build=" + build
 	}
 
-	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build)
+	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build), nil
 }
 
-func (this *AgentClient) sendProfilePrologue(conn net.Conn) error {
+func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
 	if this.blackfireQuery == "" {
 		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
 	}
@@ -189,18 +194,25 @@ func (this *AgentClient) sendProfilePrologue(conn net.Conn) error {
 		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", this.blackfireQuery, this.profileCount)
 	}
 
+	var osVersion string
+	if osVersion, err = getProfileOSHeader(); err != nil {
+		return
+	}
 	sendHeaders := make(map[string]string)
 	sendHeaders["Blackfire-Query"] = fullBlackfireQuery
 	sendHeaders["Blackfire-Probe"] = runtime.Version()
-	sendHeaders["os-version"] = getProfileOSHeader()
-	if err := writeProfileSendHeaders(sendHeaders, conn); err != nil {
-		return err
+	sendHeaders["os-version"] = osVersion
+	Log.Debug().Interface("headers", sendHeaders).Msg("Blackfire: Send profile prologue")
+	if err = writeProfileSendHeaders(sendHeaders, conn); err != nil {
+		return
 	}
 
-	// TODO: Maybe validate the headers rather than ignoring them?
-	_, err := readProfileResponseHeaders(conn)
-
-	return err
+	var responseHeaders map[string]string
+	if responseHeaders, err = readProfileResponseHeaders(conn); err != nil {
+		return
+	}
+	Log.Debug().Interface("headers", responseHeaders).Msg("Blackfire: Receive profile prologue response")
+	return
 }
 
 func (this *AgentClient) SendProfile(encodedProfile []byte) error {
@@ -214,6 +226,7 @@ func (this *AgentClient) SendProfile(encodedProfile []byte) error {
 		return err
 	}
 
+	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
 	if _, err := conn.Write(encodedProfile); err != nil {
 		return err
 	}

@@ -178,7 +178,6 @@ func convertPProfToInternal(pprofProfile *pprof.Profile) *Profile {
 func ReadFromPProf(r io.Reader) (*Profile, error) {
 	pprofProfile, err := pprof.Parse(r)
 	if err != nil {
-		fmt.Printf("Could not create profile: %v", err)
 		return nil, err
 	}
 

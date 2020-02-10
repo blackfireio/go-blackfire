@@ -1,7 +1,6 @@
 package signal
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -31,14 +30,14 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 		return
 	}
 
-	log.Printf("Blackfire (signal): Signal [%v] triggers profiling for %v seconds\n", sig, float64(duration)/1000000000)
+	blackfire.Log.Info().Msgf("Blackfire (signal): Signal [%v] triggers profiling for %v seconds\n", sig, float64(duration)/1000000000)
 
 	callFuncOnSignal(sig, func() {
-		log.Printf("Blackfire (%v): Profiling for %v seconds\n", sig, float64(duration)/1000000000)
+		blackfire.Log.Info().Msgf("Blackfire (%v): Profiling for %v seconds\n", sig, float64(duration)/1000000000)
 		if err := blackfire.ProfileWithCallback(duration, func() {
-			log.Printf("Blackfire (%v): Profile complete\n", sig)
+			blackfire.Log.Info().Msgf("Blackfire (%v): Profile complete\n", sig)
 		}); err != nil {
-			log.Printf("Blackfire Error (EnableOnSignal): %v\n", err)
+			blackfire.Log.Error().Msgf("Blackfire (EnableOnSignal): %v\n", err)
 		}
 	})
 
@@ -51,10 +50,10 @@ func DisableOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	log.Printf("Blackfire (signal): Signal [%v] stops profiling\n", sig)
+	blackfire.Log.Info().Msgf("Blackfire (signal): Signal [%v] stops profiling\n", sig)
 
 	callFuncOnSignal(sig, func() {
-		log.Printf("Blackfire (%v): Disable profiling\n", sig)
+		blackfire.Log.Info().Msgf("Blackfire (%v): Disable profiling\n", sig)
 		blackfire.Disable()
 	})
 	return
@@ -67,10 +66,10 @@ func EndOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	log.Printf("Blackfire (signal): Signal [%v] ends the current profile\n", sig)
+	blackfire.Log.Info().Msgf("Blackfire (signal): Signal [%v] ends the current profile\n", sig)
 
 	callFuncOnSignal(sig, func() {
-		log.Printf("Blackfire (%v): End profile\n", sig)
+		blackfire.Log.Info().Msgf("Blackfire (%v): End profile\n", sig)
 		blackfire.End()
 	})
 	return

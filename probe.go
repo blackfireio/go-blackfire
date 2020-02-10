@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -32,6 +31,7 @@ var (
 )
 
 func startProfiling() error {
+	Log.Debug().Msgf("Blackfire: Start profiling")
 	if currentState != profilerStateIdle {
 		return ProfilerErrorAlreadyProfiling
 	}
@@ -50,6 +50,7 @@ func startProfiling() error {
 }
 
 func stopProfiling() {
+	Log.Debug().Msgf("Blackfire: Stop profiling")
 	if currentState != profilerStateProfiling {
 		return
 	}
@@ -60,6 +61,7 @@ func stopProfiling() {
 }
 
 func endProfile() error {
+	Log.Debug().Msgf("Blackfire: End profile")
 	if currentState == profilerStateSending {
 		stopProfiling()
 	}
@@ -110,7 +112,7 @@ func onProfileDisableTriggered(callback func()) {
 
 	if endOnNextProfile {
 		if err := endProfile(); err != nil {
-			log.Printf("Error: blackfire.endProfile: %v", err)
+			Log.Error().Msgf("Blackfire (end profile): %v", err)
 		}
 	} else {
 		stopProfiling()
@@ -125,8 +127,8 @@ func onProfileDisableTriggered(callback func()) {
 // Public API
 // ----------
 
-var ProfilerErrorNotConfigured = errors.New("Blackfire: The profiler has not been configured. Please call blackfire.Configure() before calling other functions.")
-var ProfilerErrorAlreadyProfiling = errors.New("Blackfire: A Blackfire profile is currently in progress. Please wait for it to finish.")
+var ProfilerErrorNotConfigured = errors.New("The Blackfire profiler has not been configured. Please call blackfire.Configure() before calling other functions.")
+var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
 
 func AssertCanProfile() error {
 	if !isConfigured {

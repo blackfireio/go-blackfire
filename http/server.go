@@ -2,7 +2,6 @@ package blackfire
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -30,34 +29,34 @@ func enable(w http.ResponseWriter, r *http.Request) {
 	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
 
 	if err != nil {
-		log.Printf("Blackfire (HTTP): Error: %v\n", err)
+		blackfire.Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
 		w.WriteHeader(400)
 		return
 	}
 
 	if durationWasSpecified {
 		duration := time.Duration(durationInSeconds * float64(time.Second))
-		log.Printf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
+		blackfire.Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
 		if err := blackfire.ProfileWithCallback(duration, func() {
-			log.Printf("Blackfire (HTTP): Profile complete\n")
+			blackfire.Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
 		}); err != nil {
-			log.Printf("Blackfire Error (enable): %v\n", err)
+			blackfire.Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
 		}
 	} else {
-		log.Printf("Blackfire (HTTP): Enable profiling\n")
+		blackfire.Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
 		if err := blackfire.Enable(); err != nil {
-			log.Printf("Blackfire Error (enable): %v\n", err)
+			blackfire.Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
 		}
 	}
 }
 
 func disable(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Blackfire (HTTP): Disable profiling\n")
+	blackfire.Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
 	blackfire.Disable()
 }
 
 func end(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Blackfire (HTTP): End profiling\n")
+	blackfire.Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
 	blackfire.End()
 }
 
@@ -89,7 +88,7 @@ func StartServer(hostAndPort string) error {
 		hostAndPort = defaultHostAndPort
 	}
 
-	log.Printf("Blackfire (HTTP): Listening on [%v]. Paths are /start and /stop\n", hostAndPort)
+	blackfire.Log.Info().Msgf("Blackfire (HTTP): Listening on [%v]. Paths are /start and /stop\n", hostAndPort)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/enable", enable)
@@ -101,7 +100,7 @@ func StartServer(hostAndPort string) error {
 	server.Handler = mux
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Blackfire Error (StartServer): %v\n", err)
+			blackfire.Log.Error().Msgf("Blackfire (StartServer): %v\n", err)
 		}
 	}()
 

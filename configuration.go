@@ -1,7 +1,7 @@
 package blackfire
 
 import (
-	"log"
+	"fmt"
 	"math"
 	"net/url"
 	"os"
@@ -57,6 +57,7 @@ func (this *BlackfireConfiguration) getDefaultIniPath() string {
 		fileName := ".blackfire.ini"
 		filePath := path.Join(path.Clean(dir), fileName)
 		_, err := os.Stat(filePath)
+		Log.Debug().Msgf("Blackfire: Does configuration file exist at %v: %v", filePath, err == nil)
 		if err != nil {
 			return ""
 		}
@@ -105,57 +106,94 @@ func (this *BlackfireConfiguration) configureFromDefaults() {
 
 	this.setEndpoint("https://blackfire.io")
 	this.LogFile = "go-probe.log"
-	this.LogLevel = 1
+	this.LogLevel = 3
 	this.AgentTimeout = time.Millisecond * 250
 	this.MaxProfileDuration = time.Minute * 10
+
+	setLogFile(this.LogFile)
+	setLogLevel(this.LogLevel)
 }
 
-func (this *BlackfireConfiguration) configureFromEnv() {
-	if v := os.Getenv("BLACKFIRE_AGENT_SOCKET"); v != "" {
-		this.AgentSocket = v
+func readEnvVar(name string) string {
+	if v := os.Getenv(name); v != "" {
+		Log.Debug().Msgf("Blackfire: Read ENV var %v: %v", name, v)
+		return v
 	}
+	return ""
+}
 
-	if v := os.Getenv("BLACKFIRE_QUERY"); v != "" {
-		this.BlackfireQuery = v
-	}
-
-	if v := os.Getenv("BLACKFIRE_CLIENT_ID"); v != "" {
-		this.ClientId = v
-	}
-
-	if v := os.Getenv("BLACKFIRE_CLIENT_TOKEN"); v != "" {
-		this.ClientToken = v
-	}
-
-	if v := os.Getenv("BLACKFIRE_ENDPOINT"); v != "" {
-		if err := this.setEndpoint(v); err != nil {
-			log.Printf("Warning: Unable to set from env var BLACKFIRE_ENDPOINT %v: %v", v, err)
-		}
-	}
-
-	if v := os.Getenv("BLACKFIRE_LOG_FILE"); v != "" {
-		this.LogFile = v
-	}
-
-	if v := os.Getenv("BLACKFIRE_LOG_LEVEL"); v != "" {
+func (this *BlackfireConfiguration) readLoggingFromEnv() {
+	if v := readEnvVar("BLACKFIRE_LOG_LEVEL"); v != "" {
 		level, err := strconv.Atoi(v)
 		if err != nil {
-			log.Printf("Warning: Unable to set from env var BLACKFIRE_LOG_LEVEL %v: %v", v, err)
+			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_LOG_LEVEL %v: %v", v, err)
 		} else {
 			this.LogLevel = level
 		}
 	}
+
+	if v := readEnvVar("BLACKFIRE_LOG_FILE"); v != "" {
+		this.LogFile = v
+	}
+}
+
+func (this *BlackfireConfiguration) configureLoggingFromEnv() {
+	this.readLoggingFromEnv()
+
+	setLogFile(this.LogFile)
+	setLogLevel(this.LogLevel)
+}
+
+func (this *BlackfireConfiguration) configureFromEnv() {
+	this.readLoggingFromEnv()
+
+	if v := readEnvVar("BLACKFIRE_AGENT_SOCKET"); v != "" {
+		this.AgentSocket = v
+	}
+
+	if v := readEnvVar("BLACKFIRE_QUERY"); v != "" {
+		this.BlackfireQuery = v
+	}
+
+	if v := readEnvVar("BLACKFIRE_CLIENT_ID"); v != "" {
+		this.ClientId = v
+	}
+
+	if v := readEnvVar("BLACKFIRE_CLIENT_TOKEN"); v != "" {
+		this.ClientToken = v
+	}
+
+	if v := readEnvVar("BLACKFIRE_ENDPOINT"); v != "" {
+		if err := this.setEndpoint(v); err != nil {
+			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %v: %v", v, err)
+		}
+	}
+
+	setLogFile(this.LogFile)
+	setLogLevel(this.LogLevel)
 }
 
 func (this *BlackfireConfiguration) parseSeconds(value string) (time.Duration, error) {
 	re := regexp.MustCompile(`([0-9.]+)`)
 	found := re.FindStringSubmatch(value)
 
+	if len(found) == 0 {
+		return 0, fmt.Errorf("%v: No seconds value found", value)
+	}
+
 	seconds, err := strconv.ParseFloat(found[1], 64)
 	if err != nil {
 		return 0, err
 	}
 	return time.Duration(float64(time.Second) * seconds), nil
+}
+
+func getStringFromIniSection(section *ini.Section, key string) string {
+	if v := section.Key(key).String(); v != "" {
+		Log.Debug().Msgf("Blackfire: Read INI key %v: %v", key, v)
+		return v
+	}
+	return ""
 }
 
 func (this *BlackfireConfiguration) configureFromIniFile(path string) {
@@ -167,32 +205,37 @@ func (this *BlackfireConfiguration) configureFromIniFile(path string) {
 
 	iniConfig, err := ini.Load(path)
 	if err != nil {
-		log.Printf("Warning: Could not load Blackfire config file %v: %v", path, err)
+		Log.Error().Msgf("Blackfire: Could not load Blackfire config file %v: %v", path, err)
 		return
 	}
 
 	section := iniConfig.Section("blackfire")
 
 	if section.HasKey("client-id") {
-		this.ClientId = section.Key("client-id").String()
+		this.ClientId = getStringFromIniSection(section, "client-id")
 	}
 
 	if section.HasKey("client-token") {
-		this.ClientToken = section.Key("client-token").String()
+		this.ClientToken = getStringFromIniSection(section, "client-token")
 	}
 
 	if section.HasKey("endpoint") {
-		if err := this.setEndpoint(section.Key("endpoint").String()); err != nil {
-			log.Printf("Warning: Unable to set from ini file %v, endpoint %v: %v", path, section.Key("endpoint"), err)
+		endpoint := getStringFromIniSection(section, "endpoint")
+		if err := this.setEndpoint(endpoint); err != nil {
+			Log.Error().Msgf("Blackfire: Unable to set from ini file %v, endpoint %v: %v", path, endpoint, err)
 		}
 	}
 
 	if section.HasKey("timeout") {
+		timeout := getStringFromIniSection(section, "timeout")
 		var err error
-		if this.AgentTimeout, err = this.parseSeconds(section.Key("timeout").String()); err != nil {
-			log.Printf("Warning: Unable to set from ini file %v, timeout %v: %v", path, section.Key("timeout"), err)
+		if this.AgentTimeout, err = this.parseSeconds(timeout); err != nil {
+			Log.Error().Msgf("Blackfire: Unable to set from ini file %v, timeout %v: %v", path, timeout, err)
 		}
 	}
+
+	setLogFile(this.LogFile)
+	setLogLevel(this.LogLevel)
 }
 
 // Necessary because go 1.12 doesn't have reflect.IsZero
@@ -237,6 +280,7 @@ func (this *BlackfireConfiguration) valueIsZero(v reflect.Value) bool {
 
 func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *BlackfireConfiguration) {
 	if srcConfig == nil {
+		Log.Debug().Msgf("Blackfire: Manual config not provided")
 		return
 	}
 
@@ -246,9 +290,13 @@ func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *Blackf
 		sField := sv.Field(i)
 		dField := dv.Field(i)
 		if !this.valueIsZero(sField) {
+			Log.Debug().Msgf("Blackfire: Set %v manually to %v", sField.Type().Name(), sField)
 			dField.Set(sField)
 		}
 	}
+
+	setLogFile(this.LogFile)
+	setLogLevel(this.LogLevel)
 }
 
 // ----------
@@ -289,7 +337,16 @@ func NewBlackfireConfiguration(manualConfig *BlackfireConfiguration, iniFilePath
 // iniFilePath will be ignored if "".
 func (this *BlackfireConfiguration) Init(manualConfig *BlackfireConfiguration, iniFilePath string) {
 	this.configureFromDefaults()
+
+	// This allows us to debug ini file loading issues.
+	this.configureLoggingFromEnv()
+
+	Log.Debug().Msgf("Blackfire: Read configuration from INI file %v", iniFilePath)
 	this.configureFromIniFile(iniFilePath)
+	Log.Debug().Msgf("Blackfire: Read configuration from ENV")
 	this.configureFromEnv()
+	Log.Debug().Msgf("Blackfire: Read configuration from manual settings")
 	this.configureFromConfiguration(manualConfig)
+
+	Log.Debug().Interface("configuration", this).Msg("Finished configuration")
 }

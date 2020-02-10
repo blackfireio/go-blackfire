@@ -59,7 +59,7 @@ func TestConfigurationDefaults(t *testing.T) {
 	config := NewBlackfireConfiguration(nil, "")
 	assertEqual(t, "https://blackfire.io", config.HTTPEndpoint.String())
 	assertEqual(t, "go-probe.log", config.LogFile)
-	assertEqual(t, 1, config.LogLevel)
+	assertEqual(t, 3, config.LogLevel)
 	assertEqual(t, time.Millisecond*250, config.AgentTimeout)
 }
 
