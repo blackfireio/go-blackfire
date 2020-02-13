@@ -16,10 +16,11 @@ import (
 
 // Edge represents an edge of the graph, which is a call from one function to another.
 type Edge struct {
-	Count           int64
-	CumulativeValue int64
-	FromFunction    string
-	ToFunction      string
+	Count                   int64
+	CumulativeWalltimeValue int64
+	CumulativeMemValue      int64
+	FromFunction            string
+	ToFunction              string
 }
 
 func NewEdge(fromFunction string, toFunction string) *Edge {
@@ -33,8 +34,12 @@ func (this *Edge) AddCount(count int64) {
 	this.Count += count
 }
 
-func (this *Edge) AddValue(value int64) {
-	this.CumulativeValue += value
+func (this *Edge) AddWalltimeValue(value int64) {
+	this.CumulativeWalltimeValue += value
+}
+
+func (this *Edge) AddMemValue(value int64) {
+	this.CumulativeMemValue += value
 }
 
 func (this *Edge) SetMinimumCount() {
@@ -48,9 +53,10 @@ func (this *Edge) SetMinimumCount() {
 // EntryPoint represents a top level entry point into a series of edges.
 // All contained edges originate from this entry point.
 type EntryPoint struct {
-	Name  string
-	Value int64
-	Edges map[string]*Edge
+	Name     string
+	WTValue  int64
+	MemValue int64
+	Edges    map[string]*Edge
 }
 
 func NewEntryPoint(name string) *EntryPoint {
@@ -60,9 +66,10 @@ func NewEntryPoint(name string) *EntryPoint {
 	return this
 }
 
-func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, value int64) {
+func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
 	// EntryPoint's value mesures how much of the profile it encompasses
-	this.Value += value
+	this.WTValue += wtValue
+	this.MemValue += memValue
 
 	fromFunction := ""
 	var edge *Edge
@@ -83,7 +90,8 @@ func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, value 
 			edge = NewEdge(fromFunction, toFunction)
 			this.Edges[edgeName] = edge
 		}
-		edge.AddValue(value)
+		edge.AddWalltimeValue(wtValue)
+		edge.AddMemValue(memValue)
 		fromFunction = toFunction
 	}
 
@@ -120,14 +128,14 @@ func (this *Profile) BiggestImpactEntryPoint() string {
 	return this.EntryPointsLargeToSmall[0].Name
 }
 
-func (this *Profile) AddStatisticalSample(stack []string, count int64, value int64) {
+func (this *Profile) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
 	entryPointName := stack[0]
 	entryPoint, ok := this.EntryPoints[entryPointName]
 	if !ok {
 		entryPoint = NewEntryPoint(entryPointName)
 		this.EntryPoints[entryPointName] = entryPoint
 	}
-	entryPoint.AddStatisticalSample(stack, count, value)
+	entryPoint.AddStatisticalSample(stack, count, wtValue, memValue)
 }
 
 func (this *Profile) Finish() {
@@ -138,11 +146,12 @@ func (this *Profile) Finish() {
 	}
 
 	sort.Slice(this.EntryPointsLargeToSmall, func(i, j int) bool {
-		return this.EntryPointsLargeToSmall[i].Value > this.EntryPointsLargeToSmall[j].Value
+		return this.EntryPointsLargeToSmall[i].WTValue > this.EntryPointsLargeToSmall[j].WTValue
 	})
 }
 
-func convertPProfToInternal(pprofProfile *pprof.Profile) *Profile {
+// TODO: Mix in mem profile
+func convertPProfToInternal(cpuProfile, memProfile *pprof.Profile) *Profile {
 	// All pprof profiles have count in index 0, and whatever value in index 1.
 	// I haven't encountered a profile with sample value index > 1, and in fact
 	// it cannot happen the way runtime.pprof does profiling atm.
@@ -166,8 +175,12 @@ func convertPProfToInternal(pprofProfile *pprof.Profile) *Profile {
 
 	profile := NewProfile()
 
-	for _, sample := range pprofProfile.Sample {
-		profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex])
+	for _, sample := range cpuProfile.Sample {
+		profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex], 0)
+	}
+
+	for _, sample := range memProfile.Sample {
+		profile.AddStatisticalSample(generateFullStack(sample), 0, 0, sample.Value[valueIndex])
 	}
 
 	profile.Finish()
@@ -175,13 +188,17 @@ func convertPProfToInternal(pprofProfile *pprof.Profile) *Profile {
 }
 
 // Read a pprof format profile and convert to our internal format.
-func ReadFromPProf(r io.Reader) (*Profile, error) {
-	pprofProfile, err := pprof.Parse(r)
+func ReadFromPProf(cpuReader, memReader io.Reader) (*Profile, error) {
+	cpuProfile, err := pprof.Parse(cpuReader)
+	if err != nil {
+		return nil, err
+	}
+	memProfile, err := pprof.Parse(memReader)
 	if err != nil {
 		return nil, err
 	}
 
-	profile := convertPProfToInternal(pprofProfile)
+	profile := convertPProfToInternal(cpuProfile, memProfile)
 	return profile, nil
 }
 
@@ -208,7 +225,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%v"}}`, os.Args[0])
 
 	headers := make(map[string]string)
-	headers["Cost-Dimensions"] = "wt"
+	headers["Cost-Dimensions"] = "wt pmu"
 	headers["graph-root-id"] = rootNodeName
 	headers["probed-os"] = osInfo.Name
 	headers["probed-language"] = "go"
@@ -234,7 +251,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 
 	entryPoint := profile.EntryPoints[rootNodeName]
 	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v\n", name, edge.Count, edge.CumulativeValue/1000)); err != nil {
+		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v %v\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
 			return err
 		}
 

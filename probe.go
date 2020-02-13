@@ -1,9 +1,11 @@
 package blackfire
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -75,7 +77,16 @@ func endProfile() error {
 		currentState = profilerStateIdle
 	}()
 
-	profile, err := pprof_reader.ReadFromPProf(&cpuProfileBuffer)
+	var memProfileBuffer bytes.Buffer
+	memWriter := bufio.NewWriter(&memProfileBuffer)
+	if err := pprof.WriteHeapProfile(memWriter); err != nil {
+		return err
+	}
+	if err := memWriter.Flush(); err != nil {
+		return err
+	}
+
+	profile, err := pprof_reader.ReadFromPProf(&cpuProfileBuffer, &memProfileBuffer)
 	if err != nil {
 		return err
 	}
@@ -97,7 +108,11 @@ func endProfile() error {
 		return err
 	}
 
-	return nil
+	var fp *os.File
+	fp, err = os.Create("mem.pprof")
+	pprof.WriteHeapProfile(fp)
+
+	return err
 }
 
 func triggerProfilerDisable() {

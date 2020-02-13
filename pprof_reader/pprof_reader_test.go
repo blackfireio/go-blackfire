@@ -39,7 +39,8 @@ func disableTestConversion(t *testing.T) {
 	}
 	defer fr.Close()
 
-	profile, err := ReadFromPProf(fr)
+	// TODO: This will eventually load cpu and memory profile
+	profile, err := ReadFromPProf(fr, fr)
 	if err != nil {
 		t.Error(err)
 		return
