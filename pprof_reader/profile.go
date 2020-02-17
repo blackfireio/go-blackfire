@@ -225,7 +225,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%v"}}`, os.Args[0])
 
 	headers := make(map[string]string)
-	headers["Cost-Dimensions"] = "wt pmu"
+	headers["Cost-Dimensions"] = "cpu pmu"
 	headers["graph-root-id"] = rootNodeName
 	headers["probed-os"] = osInfo.Name
 	headers["probed-language"] = "go"
