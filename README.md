@@ -44,7 +44,7 @@ The following HTTP paths will be available:
 | `/enable`            | Start profiling                                       |
 | `/enable?duration=x` | Profile for the specified duration in seconds (float) |
 | `/disable`           | Stop profiling                                        |
-| `/end`               | End profiling and send data to Blackfire             |
+| `/end`               | End profiling and send data to Blackfire              |
 
 The HTTP paths do not return any data; only code 200 on successful trigger.
 
