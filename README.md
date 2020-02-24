@@ -39,11 +39,12 @@ func installProfilerHttpServer() {
 
 The following HTTP paths will be available:
 
-| Path                | Description                                           |
-| ------------------- | ----------------------------------------------------- |
-| `/start`            | Start profiling                                       |
-| `/start?duration=x` | Profile for the specified duration in seconds (float) |
-| `/stop`             | Stop profiling                                        |
+| Path                 | Description                                           |
+| -------------------- | ----------------------------------------------------- |
+| `/enable`            | Start profiling                                       |
+| `/enable?duration=x` | Profile for the specified duration in seconds (float) |
+| `/disable`           | Stop profiling                                        |
+| `/end`               | End profiling and sends data to Blackfire             |
 
 The HTTP paths do not return any data; only code 200 on successful trigger.
 
@@ -53,10 +54,10 @@ The HTTP paths do not return any data; only code 200 on successful trigger.
 import "github.com/blackfire/go-blackfire/signal"
 
 func installProfilerSignalHandlers() {
-	if err := signal.StartOnSignal(syscall.SIGUSR1, 5*time.Second); err != nil {
+	if err := signal.EnableOnSignal(syscall.SIGUSR1, 5*time.Second); err != nil {
 		log.Println(err)
 	}
-	if err := signal.StopOnSignal(syscall.SIGUSR2); err != nil {
+	if err := signal.EndOnSignal(syscall.SIGUSR2); err != nil {
 		log.Println(err)
 	}
 }
