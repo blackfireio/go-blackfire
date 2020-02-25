@@ -39,8 +39,9 @@ func setLogFileInternal(filePath string) (err error) {
 	if filePath == "" || strings.EqualFold(filePath, "stderr") {
 		writer = os.Stderr
 	} else {
-		writer, err = os.Open(filePath)
+		writer, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0664)
 		if err != nil {
+			Log.Error().Msgf("Could not open log file at %v: %v", filePath, err)
 			return
 		}
 	}
