@@ -11,9 +11,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/blackfireio/osinfo"
 )
@@ -79,10 +81,10 @@ func parseNetworkAddressString(agentSocket string) (network string, address stri
 }
 
 type AgentClient struct {
-	profileCount   int
-	agentNetwork   string
-	agentAddress   string
-	blackfireQuery string
+	profileCount      int
+	agentNetwork      string
+	agentAddress      string
+	rawBlackfireQuery string
 }
 
 func NewAgentClient(agentSocket, blackfireQuery string) (*AgentClient, error) {
@@ -106,7 +108,7 @@ func (this *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
 	if err != nil {
 		return
 	}
-	this.blackfireQuery = blackfireQuery
+	this.rawBlackfireQuery = blackfireQuery
 	return
 }
 
@@ -126,92 +128,212 @@ func (this *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndp
 	return this.Init(agentSocket, blackfireQuery)
 }
 
-func readProfileResponseHeaders(conn net.Conn) (map[string]string, error) {
-	re := regexp.MustCompile(`^([^:]+):(.*)`)
-	headers := make(map[string]string)
-	r := bufio.NewReader(conn)
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		if line == "\n" {
-			break
-		}
-		matches := re.FindAllStringSubmatch(line, -1)
-		if matches == nil {
-			return nil, fmt.Errorf("Could not parse header: [%v]", line)
-		}
-		k := matches[0][1]
-		v := matches[0][2]
+var headerRegex *regexp.Regexp = regexp.MustCompile(`^([^:]+):(.*)`)
 
-		headers[k] = v
+func readEncodedHeader(reader *bufio.Reader) (name string, urlEncodedValue string, err error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return
 	}
-
-	return headers, nil
+	if line == "\n" {
+		return
+	}
+	matches := headerRegex.FindAllStringSubmatch(line, -1)
+	if matches == nil {
+		err = fmt.Errorf("Could not parse header: [%v]", line)
+		return
+	}
+	name = matches[0][1]
+	urlEncodedValue = matches[0][2]
+	return
 }
 
-func writeProfileSendHeaders(headers map[string]string, conn net.Conn) error {
+func writeEncodedHeader(writer *bufio.Writer, name string, urlEncodedValue string) error {
+	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
+	Log.Debug().Str("header-line", line).Msgf("Send header")
+	_, err := writer.WriteString(line)
+	return err
+}
+
+func writeStringHeader(writer *bufio.Writer, name string, value string) error {
+	return writeEncodedHeader(writer, name, url.QueryEscape(value))
+}
+
+func writeMapHeader(writer *bufio.Writer, name string, values url.Values) error {
+	return writeEncodedHeader(writer, name, values.Encode())
+}
+
+func writeRawHeaders(headers []string, conn net.Conn) error {
 	w := bufio.NewWriter(conn)
-	for k, v := range headers {
-		line := fmt.Sprintf("%v: %v\n", k, v)
-		_, err := w.WriteString(line)
-		if err != nil {
+	for _, header := range headers {
+		Log.Debug().Str("header-line", header).Msgf("Send raw header")
+		if _, err := w.WriteString(header); err != nil {
+			return err
+		}
+		if _, err := w.WriteString("\n"); err != nil {
 			return err
 		}
 	}
-	_, err := w.WriteString("\n")
-	if err != nil {
+	if _, err := w.WriteString("\n"); err != nil {
 		return err
 	}
 	return w.Flush()
 }
 
-func getProfileOSHeader() (string, error) {
-	info, err := osinfo.GetOSInfo()
+func writeHeaders(headers map[string]interface{}, conn net.Conn) error {
+	w := bufio.NewWriter(conn)
+	for k, v := range headers {
+		if asString, ok := v.(string); ok {
+			if err := writeStringHeader(w, k, asString); err != nil {
+				return err
+			}
+		} else {
+			if err := writeMapHeader(w, k, v.(url.Values)); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := w.WriteString("\n"); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+func getProfileOSHeaderValue() (values url.Values, err error) {
+	var info *osinfo.OSInfo
+	info, err = osinfo.GetOSInfo()
 	if err != nil {
-		return "", err
-	}
-	codename := info.Codename
-	if len(codename) > 0 {
-		codename = " codename=" + codename
-	}
-	build := info.Build
-	if len(build) > 0 {
-		build = " build=" + build
+		return
 	}
 
-	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build), nil
+	values = make(url.Values)
+	values["family"] = []string{info.Family}
+	values["arch"] = []string{info.Architecture}
+	values["id"] = []string{info.ID}
+	values["version"] = []string{info.Version}
+	if len(info.Codename) > 0 {
+		values["codename"] = []string{info.Codename}
+	}
+	if len(info.Build) > 0 {
+		values["build"] = []string{info.Build}
+	}
+
+	return values, nil
+}
+
+func (this *AgentClient) getGoVersion() string {
+	return fmt.Sprintf("go-%v", runtime.Version()[2:])
+}
+
+func (this *AgentClient) getBlackfireQueryHeader() string {
+	builder := strings.Builder{}
+	builder.WriteString(this.rawBlackfireQuery)
+	if this.profileCount > 0 {
+		builder.WriteString("&sub_profile=")
+		builder.WriteString(fmt.Sprintf("%09d", this.profileCount))
+	}
+	return builder.String()
+}
+
+func (this *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
+	builder := strings.Builder{}
+	builder.WriteString("go-")
+	builder.WriteString(runtime.Version()[2:])
+	if hasBlackfireYaml {
+		builder.WriteString(", blackfire_yml")
+	}
+	return builder.String()
+}
+
+func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
+	filename := ".blackfire.yml"
+
+	if data, err = ioutil.ReadFile(filename); os.IsNotExist(err) {
+		Log.Debug().Msgf("%v does not exist", filename)
+		return nil, nil
+	}
+	Log.Debug().Msgf("Load %v: %v", filename, err)
+	return
+}
+
+func (this *AgentClient) sendBlackfireYaml(conn net.Conn, contents []byte) (err error) {
+	Log.Debug().Msgf("Sending blackfire.yml, size %v", len(contents))
+	header := fmt.Sprintf("Blackfire-Yaml-Size: %v\n", len(contents))
+	if _, err = conn.Write([]byte(header)); err != nil {
+		return
+	}
+
+	_, err = conn.Write(contents)
+	return
 }
 
 func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
-	if this.blackfireQuery == "" {
+	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
+	if len(this.rawBlackfireQuery) == 0 {
 		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
 	}
 
-	fullBlackfireQuery := this.blackfireQuery
-	if this.profileCount > 0 {
-		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", this.blackfireQuery, this.profileCount)
-	}
-
-	var osVersion string
-	if osVersion, err = getProfileOSHeader(); err != nil {
+	var osVersion url.Values
+	if osVersion, err = getProfileOSHeaderValue(); err != nil {
 		return
 	}
-	sendHeaders := make(map[string]string)
-	sendHeaders["Blackfire-Query"] = fullBlackfireQuery
-	sendHeaders["Blackfire-Probe"] = runtime.Version()
+
+	var blackfireYaml []byte
+	if blackfireYaml, err = this.loadBlackfireYaml(); err != nil {
+		return
+	}
+	hasBlackfireYaml := blackfireYaml != nil
+
+	// These must be done separately from the rest of the headers because they
+	// either must be sent in a specific order, or use nonstandard encoding.
+	rawHeaders := []string{
+		fmt.Sprintf("Blackfire-Query: %v", this.getBlackfireQueryHeader()),
+		fmt.Sprintf("Blackfire-Probe: %v", this.getBlackfireProbeHeader(hasBlackfireYaml)),
+	}
+	Log.Debug().Interface("raw headers", rawHeaders).Msg("Blackfire: Send profile prologue")
+
+	sendHeaders := make(map[string]interface{})
 	sendHeaders["os-version"] = osVersion
-	Log.Debug().Interface("headers", sendHeaders).Msg("Blackfire: Send profile prologue")
-	if err = writeProfileSendHeaders(sendHeaders, conn); err != nil {
+	Log.Debug().Interface("send headers", sendHeaders).Msg("Blackfire: Send profile prologue")
+
+	if err = writeRawHeaders(rawHeaders, conn); err != nil {
+		return
+	}
+	if err = writeHeaders(sendHeaders, conn); err != nil {
 		return
 	}
 
-	var responseHeaders map[string]string
-	if responseHeaders, err = readProfileResponseHeaders(conn); err != nil {
-		return
+	r := bufio.NewReader(conn)
+	for {
+		var name string
+		var value string
+		if name, value, err = readEncodedHeader(r); err != nil {
+			return
+		}
+
+		if name == "" {
+			break
+		}
+
+		Log.Debug().Interface("name", name).Interface("value", value).Msg("Recv header")
+
+		switch name {
+		case "Blackfire-Response":
+			var values url.Values
+			if values, err = url.ParseQuery(value); err != nil {
+				return
+			}
+			if result := values.Get("blackfire_yml"); result == "true" {
+				if err = this.sendBlackfireYaml(conn, blackfireYaml); err != nil {
+					return
+				}
+			}
+		case "Blackfire-Error":
+			return fmt.Errorf(strings.TrimSpace(value))
+		default:
+			// Ignore
+		}
 	}
-	Log.Debug().Interface("headers", responseHeaders).Msg("Blackfire: Receive profile prologue response")
 	return
 }
 
@@ -232,5 +354,6 @@ func (this *AgentClient) SendProfile(encodedProfile []byte) error {
 	}
 
 	this.profileCount++
+	Log.Debug().Msgf("Profile %v sent", this.profileCount)
 	return nil
 }
