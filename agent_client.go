@@ -138,6 +138,7 @@ func readEncodedHeader(reader *bufio.Reader) (name string, urlEncodedValue strin
 	if line == "\n" {
 		return
 	}
+	Log.Debug().Str("read header", line).Msgf("Recv header")
 	matches := headerRegex.FindAllStringSubmatch(line, -1)
 	if matches == nil {
 		err = fmt.Errorf("Could not parse header: [%v]", line)
@@ -150,7 +151,7 @@ func readEncodedHeader(reader *bufio.Reader) (name string, urlEncodedValue strin
 
 func writeEncodedHeader(writer *bufio.Writer, name string, urlEncodedValue string) error {
 	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
-	Log.Debug().Str("header-line", line).Msgf("Send header")
+	Log.Debug().Str("write header", line).Msgf("Send header")
 	_, err := writer.WriteString(line)
 	return err
 }
@@ -166,7 +167,7 @@ func writeMapHeader(writer *bufio.Writer, name string, values url.Values) error 
 func writeRawHeaders(headers []string, conn net.Conn) error {
 	w := bufio.NewWriter(conn)
 	for _, header := range headers {
-		Log.Debug().Str("header-line", header).Msgf("Send raw header")
+		Log.Debug().Str("write header", header).Msgf("Send raw header")
 		if _, err := w.WriteString(header); err != nil {
 			return err
 		}
@@ -222,7 +223,7 @@ func getProfileOSHeaderValue() (values url.Values, err error) {
 }
 
 func (this *AgentClient) getGoVersion() string {
-	return fmt.Sprintf("go-%v", runtime.Version()[2:])
+	return fmt.Sprintf("go %v", runtime.Version()[2:])
 }
 
 func (this *AgentClient) getBlackfireQueryHeader() string {
@@ -237,8 +238,7 @@ func (this *AgentClient) getBlackfireQueryHeader() string {
 
 func (this *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	builder := strings.Builder{}
-	builder.WriteString("go-")
-	builder.WriteString(runtime.Version()[2:])
+	builder.WriteString(this.getGoVersion())
 	if hasBlackfireYaml {
 		builder.WriteString(", blackfire_yml")
 	}
@@ -246,18 +246,27 @@ func (this *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 }
 
 func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
-	filename := ".blackfire.yml"
+	filenames := []string{".blackfire.yml", ".blackfire.yaml"}
 
-	if data, err = ioutil.ReadFile(filename); os.IsNotExist(err) {
-		Log.Debug().Msgf("%v does not exist", filename)
-		return nil, nil
+	var filename string
+	for _, filename = range filenames {
+		if data, err = ioutil.ReadFile(filename); err == nil {
+			Log.Debug().Msgf("Loaded %v", filename)
+			break
+		} else if os.IsNotExist(err) {
+			Log.Debug().Msgf("%v does not exist", filename)
+		} else {
+			return nil, err
+		}
 	}
-	Log.Debug().Msgf("Load %v: %v", filename, err)
+	if os.IsNotExist(err) {
+		err = nil
+	}
 	return
 }
 
 func (this *AgentClient) sendBlackfireYaml(conn net.Conn, contents []byte) (err error) {
-	Log.Debug().Msgf("Sending blackfire.yml, size %v", len(contents))
+	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Sending blackfire.yml, size %v", len(contents))
 	header := fmt.Sprintf("Blackfire-Yaml-Size: %v\n", len(contents))
 	if _, err = conn.Write([]byte(header)); err != nil {
 		return
@@ -290,11 +299,9 @@ func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
 		fmt.Sprintf("Blackfire-Query: %v", this.getBlackfireQueryHeader()),
 		fmt.Sprintf("Blackfire-Probe: %v", this.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
-	Log.Debug().Interface("raw headers", rawHeaders).Msg("Blackfire: Send profile prologue")
 
 	sendHeaders := make(map[string]interface{})
 	sendHeaders["os-version"] = osVersion
-	Log.Debug().Interface("send headers", sendHeaders).Msg("Blackfire: Send profile prologue")
 
 	if err = writeRawHeaders(rawHeaders, conn); err != nil {
 		return
@@ -314,8 +321,6 @@ func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
 		if name == "" {
 			break
 		}
-
-		Log.Debug().Interface("name", name).Interface("value", value).Msg("Recv header")
 
 		switch name {
 		case "Blackfire-Response":
