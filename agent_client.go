@@ -3,18 +3,17 @@ package blackfire
 // TODO: AgentTimeout
 
 import (
-	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/blackfireio/osinfo"
@@ -128,78 +127,6 @@ func (this *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndp
 	return this.Init(agentSocket, blackfireQuery)
 }
 
-var headerRegex *regexp.Regexp = regexp.MustCompile(`^([^:]+):(.*)`)
-
-func readEncodedHeader(reader *bufio.Reader) (name string, urlEncodedValue string, err error) {
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return
-	}
-	if line == "\n" {
-		return
-	}
-	Log.Debug().Str("read header", line).Msgf("Recv header")
-	matches := headerRegex.FindAllStringSubmatch(line, -1)
-	if matches == nil {
-		err = fmt.Errorf("Could not parse header: [%v]", line)
-		return
-	}
-	name = matches[0][1]
-	urlEncodedValue = matches[0][2]
-	return
-}
-
-func writeEncodedHeader(writer *bufio.Writer, name string, urlEncodedValue string) error {
-	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
-	Log.Debug().Str("write header", line).Msgf("Send header")
-	_, err := writer.WriteString(line)
-	return err
-}
-
-func writeStringHeader(writer *bufio.Writer, name string, value string) error {
-	return writeEncodedHeader(writer, name, url.QueryEscape(value))
-}
-
-func writeMapHeader(writer *bufio.Writer, name string, values url.Values) error {
-	return writeEncodedHeader(writer, name, values.Encode())
-}
-
-func writeRawHeaders(headers []string, conn net.Conn) error {
-	w := bufio.NewWriter(conn)
-	for _, header := range headers {
-		Log.Debug().Str("write header", header).Msgf("Send raw header")
-		if _, err := w.WriteString(header); err != nil {
-			return err
-		}
-		if _, err := w.WriteString("\n"); err != nil {
-			return err
-		}
-	}
-	if _, err := w.WriteString("\n"); err != nil {
-		return err
-	}
-	return w.Flush()
-}
-
-func writeHeaders(headers map[string]interface{}, conn net.Conn) error {
-	w := bufio.NewWriter(conn)
-	for k, v := range headers {
-		if asString, ok := v.(string); ok {
-			if err := writeStringHeader(w, k, asString); err != nil {
-				return err
-			}
-		} else {
-			if err := writeMapHeader(w, k, v.(url.Values)); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err := w.WriteString("\n"); err != nil {
-		return err
-	}
-	return w.Flush()
-}
-
 func getProfileOSHeaderValue() (values url.Values, err error) {
 	var info *osinfo.OSInfo
 	info, err = osinfo.GetOSInfo()
@@ -223,7 +150,7 @@ func getProfileOSHeaderValue() (values url.Values, err error) {
 }
 
 func (this *AgentClient) getGoVersion() string {
-	return fmt.Sprintf("go %v", runtime.Version()[2:])
+	return fmt.Sprintf("go-%v", runtime.Version()[2:])
 }
 
 func (this *AgentClient) getBlackfireQueryHeader() string {
@@ -265,18 +192,17 @@ func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
 	return
 }
 
-func (this *AgentClient) sendBlackfireYaml(conn net.Conn, contents []byte) (err error) {
-	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Sending blackfire.yml, size %v", len(contents))
-	header := fmt.Sprintf("Blackfire-Yaml-Size: %v\n", len(contents))
-	if _, err = conn.Write([]byte(header)); err != nil {
+func (this *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
+	if err = conn.WriteStringHeader("Blackfire-Yaml-Size", strconv.Itoa(len(contents))); err != nil {
 		return
 	}
 
-	_, err = conn.Write(contents)
+	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %v", len(contents))
+	err = conn.WriteRawData(contents)
 	return
 }
 
-func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
+func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
 	if len(this.rawBlackfireQuery) == 0 {
 		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
@@ -295,70 +221,75 @@ func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
 
 	// These must be done separately from the rest of the headers because they
 	// either must be sent in a specific order, or use nonstandard encoding.
-	rawHeaders := []string{
+	orderedHeaders := []string{
 		fmt.Sprintf("Blackfire-Query: %v", this.getBlackfireQueryHeader()),
 		fmt.Sprintf("Blackfire-Probe: %v", this.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
 
-	sendHeaders := make(map[string]interface{})
-	sendHeaders["os-version"] = osVersion
+	unorderedHeaders := make(map[string]interface{})
+	unorderedHeaders["os-version"] = osVersion
 
-	if err = writeRawHeaders(rawHeaders, conn); err != nil {
+	// Send the ordered headers first, then wait for the Blackfire-Response,
+	// then send the unordered headers.
+	if err = conn.WriteOrderedHeaders(orderedHeaders); err != nil {
 		return
 	}
-	if err = writeHeaders(sendHeaders, conn); err != nil {
+	if err = conn.WriteEndOfHeaders(); err != nil {
 		return
 	}
 
-	r := bufio.NewReader(conn)
-	for {
-		var name string
-		var value string
-		if name, value, err = readEncodedHeader(r); err != nil {
+	var responseName string
+	var responseValue string
+	if responseName, responseValue, err = conn.ReadEncodedHeader(); err != nil {
+		return
+	}
+	switch responseName {
+	case "Blackfire-Response":
+		var values url.Values
+		if values, err = url.ParseQuery(responseValue); err != nil {
 			return
 		}
-
-		if name == "" {
-			break
-		}
-
-		switch name {
-		case "Blackfire-Response":
-			var values url.Values
-			if values, err = url.ParseQuery(value); err != nil {
+		if result := values.Get("blackfire_yml"); result == "true" {
+			if err = this.sendBlackfireYaml(conn, blackfireYaml); err != nil {
 				return
 			}
-			if result := values.Get("blackfire_yml"); result == "true" {
-				if err = this.sendBlackfireYaml(conn, blackfireYaml); err != nil {
-					return
-				}
-			}
-		case "Blackfire-Error":
-			return fmt.Errorf(strings.TrimSpace(value))
-		default:
-			// Ignore
 		}
+	case "Blackfire-Error":
+		return fmt.Errorf(strings.TrimSpace(responseValue))
+	default:
+		return fmt.Errorf("Unexpected agent response: %v", responseValue)
 	}
+
+	if err = conn.WriteHeaders(unorderedHeaders); err != nil {
+		return
+	}
+	err = conn.WriteEndOfHeaders()
 	return
 }
 
-func (this *AgentClient) SendProfile(encodedProfile []byte) error {
-	conn, err := net.Dial(this.agentNetwork, this.agentAddress)
-	if err != nil {
-		return err
+func (this *AgentClient) SendProfile(encodedProfile []byte) (err error) {
+	var conn *agentConnection
+	if conn, err = newAgentConnection(this.agentNetwork, this.agentAddress); err != nil {
+		return
 	}
 	defer conn.Close()
 
-	if err := this.sendProfilePrologue(conn); err != nil {
-		return err
+	if err = this.sendProfilePrologue(conn); err != nil {
+		return
 	}
 
 	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
-	if _, err := conn.Write(encodedProfile); err != nil {
-		return err
+	if err = conn.WriteRawData(encodedProfile); err != nil {
+		return
+	}
+
+	// Force a close here so that we can catch any errors. This is idempotent
+	// so it's fine.
+	if err = conn.Close(); err != nil {
+		return
 	}
 
 	this.profileCount++
 	Log.Debug().Msgf("Profile %v sent", this.profileCount)
-	return nil
+	return
 }
