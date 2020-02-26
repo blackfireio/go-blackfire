@@ -64,9 +64,7 @@ func stopProfiling() {
 
 func endProfile() error {
 	Log.Debug().Msgf("Blackfire: End profile")
-	if currentState == profilerStateSending {
-		stopProfiling()
-	}
+	stopProfiling()
 
 	if currentState != profilerStateIdle {
 		return nil
