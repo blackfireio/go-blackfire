@@ -232,7 +232,7 @@ func Enable() error {
 	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
 
-// Stop profiling and upload the result to the agent.
+// Stop profiling.
 func Disable() {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
