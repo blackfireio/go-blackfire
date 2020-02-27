@@ -3,17 +3,18 @@ package blackfire
 // TODO: AgentTimeout
 
 import (
-	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/blackfireio/osinfo"
 )
@@ -79,10 +80,10 @@ func parseNetworkAddressString(agentSocket string) (network string, address stri
 }
 
 type AgentClient struct {
-	profileCount   int
-	agentNetwork   string
-	agentAddress   string
-	blackfireQuery string
+	profileCount      int
+	agentNetwork      string
+	agentAddress      string
+	rawBlackfireQuery string
 }
 
 func NewAgentClient(agentSocket, blackfireQuery string) (*AgentClient, error) {
@@ -106,7 +107,7 @@ func (this *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
 	if err != nil {
 		return
 	}
-	this.blackfireQuery = blackfireQuery
+	this.rawBlackfireQuery = blackfireQuery
 	return
 }
 
@@ -126,111 +127,169 @@ func (this *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndp
 	return this.Init(agentSocket, blackfireQuery)
 }
 
-func readProfileResponseHeaders(conn net.Conn) (map[string]string, error) {
-	re := regexp.MustCompile(`^([^:]+):(.*)`)
-	headers := make(map[string]string)
-	r := bufio.NewReader(conn)
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
+func getProfileOSHeaderValue() (values url.Values, err error) {
+	var info *osinfo.OSInfo
+	info, err = osinfo.GetOSInfo()
+	if err != nil {
+		return
+	}
+
+	values = make(url.Values)
+	values["family"] = []string{info.Family}
+	values["arch"] = []string{info.Architecture}
+	values["id"] = []string{info.ID}
+	values["version"] = []string{info.Version}
+	if len(info.Codename) > 0 {
+		values["codename"] = []string{info.Codename}
+	}
+	if len(info.Build) > 0 {
+		values["build"] = []string{info.Build}
+	}
+
+	return values, nil
+}
+
+func (this *AgentClient) getGoVersion() string {
+	return fmt.Sprintf("go-%v", runtime.Version()[2:])
+}
+
+func (this *AgentClient) getBlackfireQueryHeader() string {
+	builder := strings.Builder{}
+	builder.WriteString(this.rawBlackfireQuery)
+	if this.profileCount > 0 {
+		builder.WriteString("&sub_profile=")
+		builder.WriteString(fmt.Sprintf("%09d", this.profileCount))
+	}
+	return builder.String()
+}
+
+func (this *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
+	builder := strings.Builder{}
+	builder.WriteString(this.getGoVersion())
+	if hasBlackfireYaml {
+		builder.WriteString(", blackfire_yml")
+	}
+	return builder.String()
+}
+
+func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
+	filenames := []string{".blackfire.yml", ".blackfire.yaml"}
+
+	var filename string
+	for _, filename = range filenames {
+		if data, err = ioutil.ReadFile(filename); err == nil {
+			Log.Debug().Msgf("Loaded %v", filename)
+			break
+		} else if os.IsNotExist(err) {
+			Log.Debug().Msgf("%v does not exist", filename)
+		} else {
 			return nil, err
 		}
-		if line == "\n" {
-			break
-		}
-		matches := re.FindAllStringSubmatch(line, -1)
-		if matches == nil {
-			return nil, fmt.Errorf("Could not parse header: [%v]", line)
-		}
-		k := matches[0][1]
-		v := matches[0][2]
-
-		headers[k] = v
 	}
-
-	return headers, nil
-}
-
-func writeProfileSendHeaders(headers map[string]string, conn net.Conn) error {
-	w := bufio.NewWriter(conn)
-	for k, v := range headers {
-		line := fmt.Sprintf("%v: %v\n", k, v)
-		_, err := w.WriteString(line)
-		if err != nil {
-			return err
-		}
+	if os.IsNotExist(err) {
+		err = nil
 	}
-	_, err := w.WriteString("\n")
-	if err != nil {
-		return err
-	}
-	return w.Flush()
-}
-
-func getProfileOSHeader() (string, error) {
-	info, err := osinfo.GetOSInfo()
-	if err != nil {
-		return "", err
-	}
-	codename := info.Codename
-	if len(codename) > 0 {
-		codename = " codename=" + codename
-	}
-	build := info.Build
-	if len(build) > 0 {
-		build = " build=" + build
-	}
-
-	return fmt.Sprintf("family=%v arch=%v id=%v version=%v %v%v", info.Family, info.Architecture, info.ID, info.Version, codename, build), nil
-}
-
-func (this *AgentClient) sendProfilePrologue(conn net.Conn) (err error) {
-	if this.blackfireQuery == "" {
-		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
-	}
-
-	fullBlackfireQuery := this.blackfireQuery
-	if this.profileCount > 0 {
-		fullBlackfireQuery = fmt.Sprintf("%v&sub_profile=:%09d", this.blackfireQuery, this.profileCount)
-	}
-
-	var osVersion string
-	if osVersion, err = getProfileOSHeader(); err != nil {
-		return
-	}
-	sendHeaders := make(map[string]string)
-	sendHeaders["Blackfire-Query"] = fullBlackfireQuery
-	sendHeaders["Blackfire-Probe"] = runtime.Version()
-	sendHeaders["os-version"] = osVersion
-	Log.Debug().Interface("headers", sendHeaders).Msg("Blackfire: Send profile prologue")
-	if err = writeProfileSendHeaders(sendHeaders, conn); err != nil {
-		return
-	}
-
-	var responseHeaders map[string]string
-	if responseHeaders, err = readProfileResponseHeaders(conn); err != nil {
-		return
-	}
-	Log.Debug().Interface("headers", responseHeaders).Msg("Blackfire: Receive profile prologue response")
 	return
 }
 
-func (this *AgentClient) SendProfile(encodedProfile []byte) error {
-	conn, err := net.Dial(this.agentNetwork, this.agentAddress)
-	if err != nil {
-		return err
+func (this *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
+	if err = conn.WriteStringHeader("Blackfire-Yaml-Size", strconv.Itoa(len(contents))); err != nil {
+		return
+	}
+
+	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %v", len(contents))
+	err = conn.WriteRawData(contents)
+	return
+}
+
+func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
+	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
+	if len(this.rawBlackfireQuery) == 0 {
+		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
+	}
+
+	var osVersion url.Values
+	if osVersion, err = getProfileOSHeaderValue(); err != nil {
+		return
+	}
+
+	var blackfireYaml []byte
+	if blackfireYaml, err = this.loadBlackfireYaml(); err != nil {
+		return
+	}
+	hasBlackfireYaml := blackfireYaml != nil
+
+	// These must be done separately from the rest of the headers because they
+	// either must be sent in a specific order, or use nonstandard encoding.
+	orderedHeaders := []string{
+		fmt.Sprintf("Blackfire-Query: %v", this.getBlackfireQueryHeader()),
+		fmt.Sprintf("Blackfire-Probe: %v", this.getBlackfireProbeHeader(hasBlackfireYaml)),
+	}
+
+	unorderedHeaders := make(map[string]interface{})
+	unorderedHeaders["os-version"] = osVersion
+
+	// Send the ordered headers first, then wait for the Blackfire-Response,
+	// then send the unordered headers.
+	if err = conn.WriteOrderedHeaders(orderedHeaders); err != nil {
+		return
+	}
+	if err = conn.WriteEndOfHeaders(); err != nil {
+		return
+	}
+
+	var responseName string
+	var responseValue string
+	if responseName, responseValue, err = conn.ReadEncodedHeader(); err != nil {
+		return
+	}
+	switch responseName {
+	case "Blackfire-Response":
+		var values url.Values
+		if values, err = url.ParseQuery(responseValue); err != nil {
+			return
+		}
+		if result := values.Get("blackfire_yml"); result == "true" {
+			if err = this.sendBlackfireYaml(conn, blackfireYaml); err != nil {
+				return
+			}
+		}
+	case "Blackfire-Error":
+		return fmt.Errorf(strings.TrimSpace(responseValue))
+	default:
+		return fmt.Errorf("Unexpected agent response: %v", responseValue)
+	}
+
+	if err = conn.WriteHeaders(unorderedHeaders); err != nil {
+		return
+	}
+	err = conn.WriteEndOfHeaders()
+	return
+}
+
+func (this *AgentClient) SendProfile(encodedProfile []byte) (err error) {
+	var conn *agentConnection
+	if conn, err = newAgentConnection(this.agentNetwork, this.agentAddress); err != nil {
+		return
 	}
 	defer conn.Close()
 
-	if err := this.sendProfilePrologue(conn); err != nil {
-		return err
+	if err = this.sendProfilePrologue(conn); err != nil {
+		return
 	}
 
 	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
-	if _, err := conn.Write(encodedProfile); err != nil {
-		return err
+	if err = conn.WriteRawData(encodedProfile); err != nil {
+		return
+	}
+
+	// Force a close here so that we can catch any errors. This is idempotent
+	// so it's fine.
+	if err = conn.Close(); err != nil {
+		return
 	}
 
 	this.profileCount++
-	return nil
+	Log.Debug().Msgf("Profile %v sent", this.profileCount)
+	return
 }
