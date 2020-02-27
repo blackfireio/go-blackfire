@@ -31,6 +31,13 @@ var (
 	cpuProfileBuffer            bytes.Buffer
 )
 
+func init() {
+	// Attempt a default configuration. Any errors encountered will be stored
+	// and listed whenever the user makes an API call. If the user calls
+	// Configure(), the errors list will get replaced.
+	blackfireConfig.configure(nil, "")
+}
+
 func prepareAgentClient() (err error) {
 	if agentClient != nil {
 		return
@@ -154,13 +161,10 @@ func onProfileDisableTriggered(callback func()) {
 }
 
 func assertConfigurationIsValid() error {
-	if !blackfireConfig.isConfigured {
-		return fmt.Errorf("The Blackfire profiler is not configured. Please " +
-			"call blackfire.Configure() before calling other functions.")
-	}
 	if !blackfireConfig.isValid {
 		return fmt.Errorf("The Blackfire profiler has an invalid configuration. "+
-			"Please check your settings. Configuration errors = %v", blackfireConfig.validationErrors)
+			"Please check your settings. You may need to call blackfire.Configure(). "+
+			"Configuration errors = %v", blackfireConfig.validationErrors)
 	}
 	return nil
 }
@@ -172,7 +176,7 @@ func assertConfigurationIsValid() error {
 var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is " +
 	"currently in progress. Please wait for it to finish.")
 
-// Configure the probe. This should be called before any other functions.
+// Configure the probe (optional). This should be done before any other API calls.
 // If this function isn't called, the probe will get its configuration from
 // the ENV variables and the default blackfire.ini file location.
 //

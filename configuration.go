@@ -15,8 +15,6 @@ import (
 )
 
 type BlackfireConfiguration struct {
-	// True if configure() was called on this configuration
-	isConfigured bool
 	// True if this configuration has been validated and is ready for use.
 	isValid bool
 	// Errors encountered while validating
@@ -271,7 +269,6 @@ func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *Blackf
 
 func (this *BlackfireConfiguration) validate() {
 	errors := []error{}
-
 	this.isValid = false
 
 	if this.AgentTimeout <= 0 {
@@ -307,7 +304,6 @@ func (this *BlackfireConfiguration) validate() {
 	}
 
 	this.validationErrors = errors
-
 	if len(errors) == 0 {
 		this.isValid = true
 	}
@@ -329,8 +325,6 @@ func (this *BlackfireConfiguration) configure(manualConfig *BlackfireConfigurati
 	Log.Debug().Msgf("Blackfire: Read configuration from manual settings")
 	this.configureFromConfiguration(manualConfig)
 
-	this.isConfigured = true
-	this.isValid = false
 	this.validate()
 
 	if len(this.validationErrors) > 0 {
