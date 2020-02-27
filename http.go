@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/blackfireio/go-blackfire"
 )
 
 var defaultHostAndPort string = ":6020"
@@ -29,35 +27,35 @@ func enable(w http.ResponseWriter, r *http.Request) {
 	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
 
 	if err != nil {
-		blackfire.Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
+		Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
 		w.WriteHeader(400)
 		return
 	}
 
 	if durationWasSpecified {
 		duration := time.Duration(durationInSeconds * float64(time.Second))
-		blackfire.Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
-		if err := blackfire.ProfileWithCallback(duration, func() {
-			blackfire.Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
+		Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
+		if err := ProfileWithCallback(duration, func() {
+			Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
 		}); err != nil {
-			blackfire.Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
 		}
 	} else {
-		blackfire.Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
-		if err := blackfire.Enable(); err != nil {
-			blackfire.Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+		Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
+		if err := Enable(); err != nil {
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
 		}
 	}
 }
 
 func disable(w http.ResponseWriter, r *http.Request) {
-	blackfire.Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
-	blackfire.Disable()
+	Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
+	Disable()
 }
 
 func end(w http.ResponseWriter, r *http.Request) {
-	blackfire.Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
-	blackfire.End()
+	Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
+	End()
 }
 
 // ----------
@@ -72,13 +70,13 @@ func end(w http.ResponseWriter, r *http.Request) {
 // - /end : End the current profile and upload to Blackfire
 //
 // Supplying a hostAndPort value of "" will choose the default of ":6020"
-func StartServer(hostAndPort string) error {
-	httpMutex.Lock()
-	defer httpMutex.Unlock()
-
-	if err := blackfire.AssertCanProfile(); err != nil {
+func StartHttpServer(hostAndPort string) error {
+	if err := assertConfigurationIsValid(); err != nil {
 		return err
 	}
+
+	httpMutex.Lock()
+	defer httpMutex.Unlock()
 
 	if server != nil {
 		return fmt.Errorf("Already serving HTTP")
@@ -88,7 +86,7 @@ func StartServer(hostAndPort string) error {
 		hostAndPort = defaultHostAndPort
 	}
 
-	blackfire.Log.Info().Msgf("Blackfire (HTTP): Listening on [%v]. Paths are /start and /stop\n", hostAndPort)
+	Log.Info().Msgf("Blackfire (HTTP): Listening on [%v]. Paths are /enable, /disable, /end\n", hostAndPort)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/enable", enable)
@@ -100,14 +98,18 @@ func StartServer(hostAndPort string) error {
 	server.Handler = mux
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			blackfire.Log.Error().Msgf("Blackfire (StartServer): %v\n", err)
+			Log.Error().Msgf("Blackfire (StartServer): %v\n", err)
 		}
 	}()
 
 	return nil
 }
 
-func StopServer() error {
+func StopHttpServer() error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	httpMutex.Lock()
 	defer httpMutex.Unlock()
 

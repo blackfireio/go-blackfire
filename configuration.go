@@ -2,7 +2,6 @@ package blackfire
 
 import (
 	"fmt"
-	"math"
 	"net/url"
 	"os"
 	"path"
@@ -16,6 +15,13 @@ import (
 )
 
 type BlackfireConfiguration struct {
+	// True if configure() was called on this configuration
+	isConfigured bool
+	// True if this configuration has been validated and is ready for use.
+	isValid bool
+	// Errors encountered while validating
+	validationErrors []error
+
 	// Time before dropping an unresponsive agent connection (default 250ms)
 	AgentTimeout time.Duration
 	// The socket to use when connecting to the Blackfire agent (default depends on OS)
@@ -242,46 +248,6 @@ func (this *BlackfireConfiguration) configureFromIniFile(path string) {
 	setLogLevel(this.LogLevel)
 }
 
-// Necessary because go 1.12 doesn't have reflect.IsZero
-func (this *BlackfireConfiguration) valueIsZero(v reflect.Value) bool {
-	if !v.IsValid() {
-		return false
-	}
-
-	switch v.Kind() {
-	case reflect.Bool:
-		return !v.Bool()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int() == 0
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return v.Uint() == 0
-	case reflect.Float32, reflect.Float64:
-		return math.Float64bits(v.Float()) == 0
-	case reflect.Complex64, reflect.Complex128:
-		c := v.Complex()
-		return math.Float64bits(real(c)) == 0 && math.Float64bits(imag(c)) == 0
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
-		return v.IsNil()
-	case reflect.String:
-		return v.Len() == 0
-	case reflect.Array:
-		for i := 0; i < v.Len(); i++ {
-			if !this.valueIsZero(v.Index(i)) {
-				return false
-			}
-		}
-		return true
-	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			if !this.valueIsZero(v.Field(i)) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
 func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *BlackfireConfiguration) {
 	if srcConfig == nil {
 		Log.Debug().Msgf("Blackfire: Manual config not provided")
@@ -293,7 +259,7 @@ func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *Blackf
 	for i := 0; i < sv.NumField(); i++ {
 		sField := sv.Field(i)
 		dField := dv.Field(i)
-		if !this.valueIsZero(sField) {
+		if !valueIsZero(sField) {
 			Log.Debug().Msgf("Blackfire: Set %v manually to %v", sField.Type().Name(), sField)
 			dField.Set(sField)
 		}
@@ -303,43 +269,53 @@ func (this *BlackfireConfiguration) configureFromConfiguration(srcConfig *Blackf
 	setLogLevel(this.LogLevel)
 }
 
-// ----------
-// Public API
-// ----------
+func (this *BlackfireConfiguration) validate() {
+	errors := []error{}
 
-// Initialize this Blackfire configuration.
-// Configuration is initialized in a set order, with later steps overriding
-// earlier steps. Missing or zero values will not be applied.
-// See: Zero values https://tour.golang.org/basics/12
-//
-// Initialization order:
-// * Defaults
-// * INI file
-// * Environment variables
-// * Manual configuration
-//
-// manualConfig will be ignored if nil.
-// iniFilePath will be ignored if "".
-func NewBlackfireConfiguration(manualConfig *BlackfireConfiguration, iniFilePath string) (this *BlackfireConfiguration) {
-	this = new(BlackfireConfiguration)
-	this.Init(manualConfig, iniFilePath)
-	return this
+	this.isValid = false
+
+	if this.AgentTimeout <= 0 {
+		errors = append(errors, fmt.Errorf("Agent timeout cannot be less than 1"))
+	}
+
+	if this.AgentSocket == "" {
+		errors = append(errors, fmt.Errorf("Agent socket cannot be empty"))
+	}
+
+	if this.BlackfireQuery == "" {
+		if this.ClientId == "" || this.ClientToken == "" {
+			errors = append(errors, fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set"))
+		}
+	}
+
+	if this.HTTPEndpoint == nil {
+		errors = append(errors, fmt.Errorf("HTTP endpoint cannot be empty"))
+	}
+
+	if this.LogFile != "" && this.LogFile != "stderr" {
+		if _, err := os.Stat(this.LogFile); err != nil {
+			errors = append(errors, fmt.Errorf("Log file %v not found", this.LogFile))
+		}
+	}
+
+	if this.LogLevel < 1 || this.LogLevel > 4 {
+		errors = append(errors, fmt.Errorf("Log level must be from 1 to 4"))
+	}
+
+	if this.MaxProfileDuration < 1 {
+		errors = append(errors, fmt.Errorf("Max profile duration cannot be less than 1"))
+	}
+
+	this.validationErrors = errors
+
+	if len(errors) == 0 {
+		this.isValid = true
+	}
 }
 
-// Initialize this Blackfire configuration.
-// Configuration is initialized in a set order, with later steps overriding
-// earlier steps. Missing or zero values will not be applied.
-// See: Zero values https://tour.golang.org/basics/12
-//
-// Initialization order:
-// * Defaults
-// * INI file
-// * Environment variables
-// * Manual configuration
-//
-// manualConfig will be ignored if nil.
-// iniFilePath will be ignored if "".
-func (this *BlackfireConfiguration) Init(manualConfig *BlackfireConfiguration, iniFilePath string) {
+func (this *BlackfireConfiguration) configure(manualConfig *BlackfireConfiguration, iniFilePath string) error {
+	Log.Debug().Msgf("Blackfire: build configuration")
+
 	this.configureFromDefaults()
 
 	// This allows us to debug ini file loading issues.
@@ -349,8 +325,18 @@ func (this *BlackfireConfiguration) Init(manualConfig *BlackfireConfiguration, i
 	this.configureFromIniFile(iniFilePath)
 	Log.Debug().Msgf("Blackfire: Read configuration from ENV")
 	this.configureFromEnv()
+
 	Log.Debug().Msgf("Blackfire: Read configuration from manual settings")
 	this.configureFromConfiguration(manualConfig)
 
+	this.isConfigured = true
+	this.isValid = false
+	this.validate()
+
+	if len(this.validationErrors) > 0 {
+		return fmt.Errorf("blackfire.Configure() encountered errors: %v", this.validationErrors)
+	}
+
 	Log.Debug().Interface("configuration", this).Msg("Finished configuration")
+	return nil
 }

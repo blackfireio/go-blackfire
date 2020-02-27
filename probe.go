@@ -22,9 +22,8 @@ const (
 )
 
 var (
-	blackfireConfig             *BlackfireConfiguration
+	blackfireConfig             BlackfireConfiguration
 	agentClient                 *AgentClient
-	isConfigured                bool
 	profilerMutex               sync.Mutex
 	triggerDisableProfilingChan chan bool
 	currentState                profilerState
@@ -32,13 +31,27 @@ var (
 	cpuProfileBuffer            bytes.Buffer
 )
 
+func prepareAgentClient() (err error) {
+	if agentClient != nil {
+		return
+	}
+
+	if blackfireConfig.BlackfireQuery != "" {
+		agentClient, err = NewAgentClient(blackfireConfig.AgentSocket, blackfireConfig.BlackfireQuery)
+	} else {
+		agentClient, err = NewAgentClientWithSigningRequest(blackfireConfig.AgentSocket, blackfireConfig.HTTPEndpoint, blackfireConfig.ClientId, blackfireConfig.ClientToken)
+	}
+
+	return
+}
+
 func startProfiling() error {
 	Log.Debug().Msgf("Blackfire: Start profiling")
 	if currentState != profilerStateIdle {
 		return ProfilerErrorAlreadyProfiling
 	}
 
-	if err := AssertCanProfile(); err != nil {
+	if err := assertConfigurationIsValid(); err != nil {
 		return err
 	}
 
@@ -68,6 +81,10 @@ func endProfile() error {
 
 	if currentState != profilerStateIdle {
 		return nil
+	}
+
+	if err := prepareAgentClient(); err != nil {
+		return err
 	}
 
 	currentState = profilerStateSending
@@ -136,23 +153,31 @@ func onProfileDisableTriggered(callback func()) {
 	}
 }
 
-// ----------
-// Public API
-// ----------
-
-var ProfilerErrorNotConfigured = errors.New("The Blackfire profiler has not been configured. Please call blackfire.Configure() before calling other functions.")
-var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
-
-func AssertCanProfile() error {
-	if !isConfigured {
-		return ProfilerErrorNotConfigured
+func assertConfigurationIsValid() error {
+	if !blackfireConfig.isConfigured {
+		return fmt.Errorf("The Blackfire profiler is not configured. Please " +
+			"call blackfire.Configure() before calling other functions.")
+	}
+	if !blackfireConfig.isValid {
+		return fmt.Errorf("The Blackfire profiler has an invalid configuration. "+
+			"Please check your settings. Configuration errors = %v", blackfireConfig.validationErrors)
 	}
 	return nil
 }
 
-// Configure the probe. This must be called before any other functions.
+// ----------
+// Public API
+// ----------
+
+var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is " +
+	"currently in progress. Please wait for it to finish.")
+
+// Configure the probe. This should be called before any other functions.
+// If this function isn't called, the probe will get its configuration from
+// the ENV variables and the default blackfire.ini file location.
+//
 // Configuration is initialized in a set order, with later steps overriding
-// earlier steps. Missing or zero values will not be applied.
+// earlier steps. Missing or zero values in manualConfig will not be applied.
 // See: Zero values https://tour.golang.org/basics/12
 //
 // Initialization order:
@@ -166,18 +191,7 @@ func AssertCanProfile() error {
 func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err error) {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
-	blackfireConfig = NewBlackfireConfiguration(manualConfig, iniFilePath)
-	if blackfireConfig.BlackfireQuery == "" {
-		if blackfireConfig.ClientId == "" || blackfireConfig.ClientToken == "" {
-			return fmt.Errorf("Error: Blackfire: No Blackfire query or client ID/token found. Please add one of these to your configuration.")
-		}
-		agentClient, err = NewAgentClientWithSigningRequest(blackfireConfig.AgentSocket, blackfireConfig.HTTPEndpoint, blackfireConfig.ClientId, blackfireConfig.ClientToken)
-	} else {
-		agentClient, err = NewAgentClient(blackfireConfig.AgentSocket, blackfireConfig.BlackfireQuery)
-	}
-	if err == nil {
-		isConfigured = true
-	}
+	blackfireConfig.configure(manualConfig, iniFilePath)
 	return
 }
 
@@ -191,6 +205,10 @@ func IsProfiling() bool {
 // - Connect to the agent and upload the generated profile.
 // - Call the callback in a goroutine (if not null).
 func ProfileWithCallback(duration time.Duration, callback func()) error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
@@ -222,6 +240,10 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 // Profile the current process for the specified duration, then
 // connect to the agent and upload the generated profile.
 func ProfileFor(duration time.Duration) error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	return ProfileWithCallback(duration, nil)
 }
 
@@ -229,24 +251,37 @@ func ProfileFor(duration time.Duration) error {
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
 func Enable() error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
 
 // Stop profiling.
-func Disable() {
+func Disable() error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
 	if currentState != profilerStateProfiling {
-		return
+		// Keep it idempotent
+		return nil
 	}
 
 	triggerProfilerDisable()
-	return
+	return nil
 }
 
 // Stop profiling and upload the result to the agent.
-func End() {
+func End() error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
@@ -261,5 +296,5 @@ func End() {
 		}()
 	}
 
-	return
+	return nil
 }

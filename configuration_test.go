@@ -55,8 +55,14 @@ func unsetEnv() {
 	os.Unsetenv("BLACKFIRE_LOG_LEVEL")
 }
 
+func newBlackfireConfiguration(manualConfig *BlackfireConfiguration, iniFilePath string) *BlackfireConfiguration {
+	config := new(BlackfireConfiguration)
+	config.configure(manualConfig, iniFilePath)
+	return config
+}
+
 func TestConfigurationDefaults(t *testing.T) {
-	config := NewBlackfireConfiguration(nil, "")
+	config := newBlackfireConfiguration(nil, "")
 	assertEqual(t, "https://blackfire.io", config.HTTPEndpoint.String())
 	assertEqual(t, "go-probe.log", config.LogFile)
 	assertEqual(t, 3, config.LogLevel)
@@ -64,7 +70,7 @@ func TestConfigurationDefaults(t *testing.T) {
 }
 
 func TestConfigurationIniFile(t *testing.T) {
-	config := NewBlackfireConfiguration(nil, "fixtures/test_blackfire.ini")
+	config := newBlackfireConfiguration(nil, "fixtures/test_blackfire.ini")
 	assertEqual(t, "https://blackfire.io/ini", config.HTTPEndpoint.String())
 	assertEqual(t, "ab6f24b1-3103-4503-9f68-93d4b3f10c7c", config.ClientId)
 	assertEqual(t, "ec4f5fb9f43ec7004b44fc2f217c944c324c6225efcf144c2cee65eb5c45754c", config.ClientToken)
@@ -74,7 +80,7 @@ func TestConfigurationIniFile(t *testing.T) {
 func TestConfigurationEnv(t *testing.T) {
 	setupEnv()
 
-	config := NewBlackfireConfiguration(nil, "")
+	config := newBlackfireConfiguration(nil, "")
 	assertEqual(t, "tcp://127.0.0.1:2222", config.AgentSocket)
 	assertEqual(t, "blackfire_query_env", config.BlackfireQuery)
 	assertEqual(t, "client_id_env", config.ClientId)
@@ -84,7 +90,7 @@ func TestConfigurationEnv(t *testing.T) {
 	assertEqual(t, 2, config.LogLevel)
 	assertEqual(t, time.Millisecond*250, config.AgentTimeout)
 
-	config = NewBlackfireConfiguration(nil, "fixtures/test_blackfire.ini")
+	config = newBlackfireConfiguration(nil, "fixtures/test_blackfire.ini")
 	assertEqual(t, "tcp://127.0.0.1:2222", config.AgentSocket)
 	assertEqual(t, "blackfire_query_env", config.BlackfireQuery)
 	assertEqual(t, "client_id_env", config.ClientId)
@@ -101,7 +107,7 @@ func TestConfigurationManual(t *testing.T) {
 	setupEnv()
 	manualConfig := newManualConfig()
 
-	config := NewBlackfireConfiguration(manualConfig, "")
+	config := newBlackfireConfiguration(manualConfig, "")
 	assertEqual(t, "tcp://127.0.0.1:3333", config.AgentSocket)
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)
@@ -111,7 +117,7 @@ func TestConfigurationManual(t *testing.T) {
 	assertEqual(t, 3, config.LogLevel)
 	assertEqual(t, time.Second*3, config.AgentTimeout)
 
-	config = NewBlackfireConfiguration(manualConfig, "fixtures/test_blackfire.ini")
+	config = newBlackfireConfiguration(manualConfig, "fixtures/test_blackfire.ini")
 	assertEqual(t, "tcp://127.0.0.1:3333", config.AgentSocket)
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)
@@ -138,7 +144,7 @@ func TestConfigurationMixed(t *testing.T) {
 	// Use ini
 	manualConfig.AgentTimeout = 0
 
-	config := NewBlackfireConfiguration(manualConfig, "")
+	config := newBlackfireConfiguration(manualConfig, "")
 	assertEqual(t, "tcp://127.0.0.1:3333", config.AgentSocket)
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)
@@ -148,7 +154,7 @@ func TestConfigurationMixed(t *testing.T) {
 	assertEqual(t, 3, config.LogLevel)
 	assertEqual(t, time.Millisecond*250, config.AgentTimeout)
 
-	config = NewBlackfireConfiguration(manualConfig, "fixtures/test2_blackfire.ini")
+	config = newBlackfireConfiguration(manualConfig, "fixtures/test2_blackfire.ini")
 	assertEqual(t, "tcp://127.0.0.1:3333", config.AgentSocket)
 	assertEqual(t, "blackfire_query_manual", config.BlackfireQuery)
 	assertEqual(t, "client_id_manual", config.ClientId)

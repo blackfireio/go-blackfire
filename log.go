@@ -30,6 +30,13 @@ func init() {
 }
 
 func setLogLevelInternal(level int) {
+	if level < 1 {
+		level = 1
+	}
+	if level > 4 {
+		level = 4
+	}
+
 	Log = Log.Level(logLevelMappings[level])
 	currentLogLevel = level
 }
