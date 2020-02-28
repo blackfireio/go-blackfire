@@ -283,7 +283,7 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 		return
 	}
 
-	// Force a close here so that we can catch any errors. c is idempotent
+	// Force a close here so that we can catch any errors. conn is idempotent
 	// so it's fine.
 	if err = conn.Close(); err != nil {
 		return

@@ -289,7 +289,7 @@ func (c *BlackfireConfiguration) validate() {
 		errors = append(errors, fmt.Errorf("HTTP endpoint cannot be empty"))
 	}
 
-	if c.LogFile != "" && c.LogFile != "stderr" {
+	if c.LogFile != "" && c.LogFile != "stdout" && c.LogFile != "stderr" {
 		if _, err := os.Stat(c.LogFile); err != nil {
 			errors = append(errors, fmt.Errorf("Log file %v not found", c.LogFile))
 		}

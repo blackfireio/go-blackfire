@@ -45,6 +45,8 @@ func setLogFileInternal(filePath string) (err error) {
 	var writer io.Writer
 	if filePath == "" || strings.EqualFold(filePath, "stderr") {
 		writer = os.Stderr
+	} else if strings.EqualFold(filePath, "stdout") {
+		writer = os.Stdout
 	} else {
 		writer, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0664)
 		if err != nil {

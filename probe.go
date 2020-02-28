@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -16,8 +15,9 @@ import (
 type profilerState int
 
 const (
-	profilerStateIdle profilerState = iota
-	profilerStateProfiling
+	profilerStateOff profilerState = iota
+	profilerStateEnabled
+	profilerStateDisabled
 	profilerStateSending
 )
 
@@ -27,7 +27,6 @@ var (
 	profilerMutex               sync.Mutex
 	triggerDisableProfilingChan chan bool
 	currentState                profilerState
-	endOnNextProfile            bool
 	cpuProfileBuffers           []*bytes.Buffer
 	memProfileBuffers           []*bytes.Buffer
 )
@@ -59,7 +58,7 @@ func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err er
 
 // IsProfiling checks if the profiler is running. Only one profiler may run at a time.
 func IsProfiling() bool {
-	return currentState != profilerStateIdle
+	return currentState == profilerStateEnabled || currentState == profilerStateSending
 }
 
 // ProfileWithCallback profiles the current process for the specified duration.
@@ -73,19 +72,23 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
+	// Note: The check for "can enable" is inside enableProfiling()
+	// It must reside there because it returns an error if we're currently
+	// profiling, or sending the profile to the agent.
+
 	if duration > blackfireConfig.MaxProfileDuration {
 		duration = blackfireConfig.MaxProfileDuration
 	}
 
-	if err := startProfiling(); err != nil {
+	if err := enableProfiling(); err != nil {
 		return err
 	}
 
 	channel := make(chan bool)
 
 	go func() {
-		<-channel
-		onProfileDisableTriggered(callback)
+		shouldEndProfile := <-channel
+		onProfileDisableTriggered(shouldEndProfile, callback)
 	}()
 
 	go func() {
@@ -98,12 +101,14 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 	return nil
 }
 
-// Profile the current process for the specified duration, then
-// connect to the agent and upload the generated profile.
+// ProfileFor profiles the current process for the specified duration, then
+// connects to the agent and uploads the generated profile.
 func ProfileFor(duration time.Duration) error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
 	}
+
+	// Note: The check for "can enable" is inside ProfileWithCallback()
 
 	return ProfileWithCallback(duration, nil)
 }
@@ -115,6 +120,8 @@ func Enable() error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
 	}
+
+	// Note: The check for "can enable" is inside ProfileFor()
 
 	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
@@ -128,16 +135,17 @@ func Disable() error {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
-	if currentState != profilerStateProfiling {
-		// Keep it idempotent
+	if !canDisableProfiling() {
 		return nil
 	}
 
-	triggerProfilerDisable()
+	triggerStopProfiler(false)
 	return nil
 }
 
-// End stops profiling and upload the result to the agent.
+// End stops profiling, then uploads the result to the agent in a separate
+// goroutine. You must ensure that the program does not exit before uploading
+// is complete. If you can't make such a guarantee, use EndAndWait() instead.
 func End() error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
@@ -146,17 +154,31 @@ func End() error {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
-	switch currentState {
-	case profilerStateProfiling:
-		endOnNextProfile = true
-		triggerProfilerDisable()
-	case profilerStateIdle:
-		endOnNextProfile = true
-		go func() {
-			onProfileDisableTriggered(nil)
-		}()
+	if !canEndProfiling() {
+		return nil
 	}
 
+	triggerStopProfiler(true)
+	return nil
+}
+
+// EndAndWait ends the current profile, then blocks until the result is uploaded
+// to the agent.
+func EndAndWait() error {
+	if err := assertConfigurationIsValid(); err != nil {
+		return err
+	}
+
+	profilerMutex.Lock()
+	defer profilerMutex.Unlock()
+
+	if !canEndProfiling() {
+		return nil
+	}
+
+	Log.Debug().Msgf("Ending the current profile and blocking until it's uploaded")
+	endProfile()
+	Log.Debug().Msgf("Profile uploaded. Unblocking.")
 	return nil
 }
 
@@ -199,14 +221,47 @@ func prepareAgentClient() (err error) {
 	return
 }
 
-func startProfiling() error {
-	Log.Debug().Msgf("Blackfire: Start profiling")
-	if currentState != profilerStateIdle {
-		return ProfilerErrorAlreadyProfiling
+func canEnableProfiling() bool {
+	switch currentState {
+	case profilerStateOff, profilerStateDisabled:
+		return true
+	case profilerStateEnabled, profilerStateSending:
+		return false
+	default:
+		panic(fmt.Errorf("Unhandled state: %v", currentState))
 	}
+}
 
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func canDisableProfiling() bool {
+	switch currentState {
+	case profilerStateEnabled:
+		return true
+	case profilerStateOff, profilerStateDisabled, profilerStateSending:
+		return false
+	default:
+		panic(fmt.Errorf("Unhandled state: %v", currentState))
+	}
+}
+
+func canEndProfiling() bool {
+	switch currentState {
+	case profilerStateEnabled, profilerStateDisabled:
+		return true
+	case profilerStateOff, profilerStateSending:
+		return false
+	default:
+		panic(fmt.Errorf("Unhandled state: %v", currentState))
+	}
+}
+
+func enableProfiling() error {
+	Log.Debug().Msgf("Blackfire: Start profiling")
+
+	if !canEnableProfiling() {
+		if IsProfiling() {
+			return ProfilerErrorAlreadyProfiling
+		}
+		return nil
 	}
 
 	addNewProfileBufferSet()
@@ -215,19 +270,18 @@ func startProfiling() error {
 		return err
 	}
 
-	endOnNextProfile = false
-	currentState = profilerStateProfiling
+	currentState = profilerStateEnabled
 	return nil
 }
 
-func stopProfiling() error {
+func disableProfiling() error {
 	Log.Debug().Msgf("Blackfire: Stop profiling")
-	if currentState != profilerStateProfiling {
+	if !canDisableProfiling() {
 		return nil
 	}
 
 	defer func() {
-		currentState = profilerStateIdle
+		currentState = profilerStateDisabled
 	}()
 
 	pprof.StopCPUProfile()
@@ -245,12 +299,12 @@ func stopProfiling() error {
 
 func endProfile() error {
 	Log.Debug().Msgf("Blackfire: End profile")
-	if err := stopProfiling(); err != nil {
-		return err
+	if !canEndProfiling() {
+		return nil
 	}
 
-	if currentState != profilerStateIdle {
-		return nil
+	if err := disableProfiling(); err != nil {
+		return err
 	}
 
 	if err := prepareAgentClient(); err != nil {
@@ -259,7 +313,7 @@ func endProfile() error {
 
 	currentState = profilerStateSending
 	defer func() {
-		currentState = profilerStateIdle
+		currentState = profilerStateOff
 	}()
 
 	profile, err := pprof_reader.ReadFromPProf(cpuProfileBuffers, memProfileBuffers)
@@ -285,29 +339,25 @@ func endProfile() error {
 		return err
 	}
 
-	var fp *os.File
-	fp, err = os.Create("mem.pprof")
-	pprof.WriteHeapProfile(fp)
-
 	return err
 }
 
-func triggerProfilerDisable() {
+func triggerStopProfiler(shouldEndProfile bool) {
 	channel := triggerDisableProfilingChan
 	triggerDisableProfilingChan = make(chan bool)
-	channel <- true
+	channel <- shouldEndProfile
 }
 
-func onProfileDisableTriggered(callback func()) {
+func onProfileDisableTriggered(shouldEndProfile bool, callback func()) {
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
-	if endOnNextProfile {
+	if shouldEndProfile {
 		if err := endProfile(); err != nil {
 			Log.Error().Msgf("Blackfire (end profile): %v", err)
 		}
 	} else {
-		if err := stopProfiling(); err != nil {
+		if err := disableProfiling(); err != nil {
 			Log.Error().Msgf("Blackfire (stop profiling): %v", err)
 		}
 	}
