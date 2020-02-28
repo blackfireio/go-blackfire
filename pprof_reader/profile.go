@@ -2,6 +2,7 @@ package pprof_reader
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net/url"
@@ -9,6 +10,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
 
 	pprof "github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
 	"github.com/blackfireio/osinfo"
@@ -150,8 +153,7 @@ func (this *Profile) Finish() {
 	})
 }
 
-// TODO: Mix in mem profile
-func convertPProfToInternal(cpuProfile, memProfile *pprof.Profile) *Profile {
+func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile {
 	// All pprof profiles have count in index 0, and whatever value in index 1.
 	// I haven't encountered a profile with sample value index > 1, and in fact
 	// it cannot happen the way runtime.pprof does profiling atm.
@@ -175,12 +177,16 @@ func convertPProfToInternal(cpuProfile, memProfile *pprof.Profile) *Profile {
 
 	profile := NewProfile()
 
-	for _, sample := range cpuProfile.Sample {
-		profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex], 0)
+	for _, cpuProfile := range cpuProfiles {
+		for _, sample := range cpuProfile.Sample {
+			profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex], 0)
+		}
 	}
 
-	for _, sample := range memProfile.Sample {
-		profile.AddStatisticalSample(generateFullStack(sample), 0, 0, sample.Value[valueIndex])
+	for _, memProfile := range memProfiles {
+		for _, sample := range memProfile.Sample {
+			profile.AddStatisticalSample(generateFullStack(sample), 0, 0, sample.Value[valueIndex])
+		}
 	}
 
 	profile.Finish()
@@ -188,17 +194,26 @@ func convertPProfToInternal(cpuProfile, memProfile *pprof.Profile) *Profile {
 }
 
 // Read a pprof format profile and convert to our internal format.
-func ReadFromPProf(cpuReader, memReader io.Reader) (*Profile, error) {
-	cpuProfile, err := pprof.Parse(cpuReader)
-	if err != nil {
-		return nil, err
-	}
-	memProfile, err := pprof.Parse(memReader)
-	if err != nil {
-		return nil, err
+func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
+	cpuProfiles := []*profile.Profile{}
+	for _, buffer := range cpuBuffers {
+		if profile, err := pprof.Parse(buffer); err == nil {
+			cpuProfiles = append(cpuProfiles, profile)
+		} else {
+			return nil, err
+		}
 	}
 
-	profile := convertPProfToInternal(cpuProfile, memProfile)
+	memProfiles := []*profile.Profile{}
+	for _, buffer := range memBuffers {
+		if profile, err := pprof.Parse(buffer); err == nil {
+			memProfiles = append(memProfiles, profile)
+		} else {
+			return nil, err
+		}
+	}
+
+	profile := convertPProfsToInternal(cpuProfiles, memProfiles)
 	return profile, nil
 }
 

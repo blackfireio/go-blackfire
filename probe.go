@@ -28,7 +28,8 @@ var (
 	triggerDisableProfilingChan chan bool
 	currentState                profilerState
 	endOnNextProfile            bool
-	cpuProfileBuffer            bytes.Buffer
+	cpuProfileBuffers           []*bytes.Buffer
+	memProfileBuffers           []*bytes.Buffer
 )
 
 func init() {
@@ -36,6 +37,24 @@ func init() {
 	// and listed whenever the user makes an API call. If the user calls
 	// Configure(), the errors list will get replaced.
 	blackfireConfig.configure(nil, "")
+}
+
+func addNewProfileBufferSet() {
+	cpuProfileBuffers = append(cpuProfileBuffers, &bytes.Buffer{})
+	memProfileBuffers = append(memProfileBuffers, &bytes.Buffer{})
+}
+
+func resetProfileBufferSet() {
+	cpuProfileBuffers = cpuProfileBuffers[:0]
+	memProfileBuffers = memProfileBuffers[:0]
+}
+
+func currentCPUBuffer() *bytes.Buffer {
+	return cpuProfileBuffers[len(cpuProfileBuffers)-1]
+}
+
+func currentMemBuffer() *bytes.Buffer {
+	return memProfileBuffers[len(memProfileBuffers)-1]
 }
 
 func prepareAgentClient() (err error) {
@@ -62,7 +81,9 @@ func startProfiling() error {
 		return err
 	}
 
-	if err := pprof.StartCPUProfile(&cpuProfileBuffer); err != nil {
+	addNewProfileBufferSet()
+
+	if err := pprof.StartCPUProfile(currentCPUBuffer()); err != nil {
 		return err
 	}
 
@@ -71,20 +92,34 @@ func startProfiling() error {
 	return nil
 }
 
-func stopProfiling() {
+func stopProfiling() error {
 	Log.Debug().Msgf("Blackfire: Stop profiling")
 	if currentState != profilerStateProfiling {
-		return
+		return nil
 	}
 
+	defer func() {
+		currentState = profilerStateIdle
+	}()
+
 	pprof.StopCPUProfile()
-	currentState = profilerStateIdle
-	return
+
+	memWriter := bufio.NewWriter(currentMemBuffer())
+	if err := pprof.WriteHeapProfile(memWriter); err != nil {
+		return err
+	}
+	if err := memWriter.Flush(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func endProfile() error {
 	Log.Debug().Msgf("Blackfire: End profile")
-	stopProfiling()
+	if err := stopProfiling(); err != nil {
+		return err
+	}
 
 	if currentState != profilerStateIdle {
 		return nil
@@ -99,19 +134,11 @@ func endProfile() error {
 		currentState = profilerStateIdle
 	}()
 
-	var memProfileBuffer bytes.Buffer
-	memWriter := bufio.NewWriter(&memProfileBuffer)
-	if err := pprof.WriteHeapProfile(memWriter); err != nil {
-		return err
-	}
-	if err := memWriter.Flush(); err != nil {
-		return err
-	}
-
-	profile, err := pprof_reader.ReadFromPProf(&cpuProfileBuffer, &memProfileBuffer)
+	profile, err := pprof_reader.ReadFromPProf(cpuProfileBuffers, memProfileBuffers)
 	if err != nil {
 		return err
 	}
+	resetProfileBufferSet()
 
 	if profile == nil {
 		return fmt.Errorf("Profile was not created")
@@ -152,7 +179,9 @@ func onProfileDisableTriggered(callback func()) {
 			Log.Error().Msgf("Blackfire (end profile): %v", err)
 		}
 	} else {
-		stopProfiling()
+		if err := stopProfiling(); err != nil {
+			Log.Error().Msgf("Blackfire (stop profiling): %v", err)
+		}
 	}
 
 	if callback != nil {
