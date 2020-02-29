@@ -195,19 +195,19 @@ func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile
 func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 	cpuProfiles := []*pprof.Profile{}
 	for _, buffer := range cpuBuffers {
-		if profile, err := pprof.Parse(buffer); err == nil {
-			cpuProfiles = append(cpuProfiles, profile)
-		} else {
+		if profile, err := pprof.Parse(buffer); err != nil {
 			return nil, err
+		} else {
+			cpuProfiles = append(cpuProfiles, profile)
 		}
 	}
 
 	memProfiles := []*pprof.Profile{}
 	for _, buffer := range memBuffers {
-		if profile, err := pprof.Parse(buffer); err == nil {
-			memProfiles = append(memProfiles, profile)
-		} else {
+		if profile, err := pprof.Parse(buffer); err != nil {
 			return nil, err
+		} else {
+			memProfiles = append(memProfiles, profile)
 		}
 	}
 
