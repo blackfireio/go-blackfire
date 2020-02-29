@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
-
 	pprof "github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
 	"github.com/blackfireio/osinfo"
 )
@@ -195,7 +193,7 @@ func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile
 
 // Read a pprof format profile and convert to our internal format.
 func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
-	cpuProfiles := []*profile.Profile{}
+	cpuProfiles := []*pprof.Profile{}
 	for _, buffer := range cpuBuffers {
 		if profile, err := pprof.Parse(buffer); err == nil {
 			cpuProfiles = append(cpuProfiles, profile)
@@ -204,7 +202,7 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 		}
 	}
 
-	memProfiles := []*profile.Profile{}
+	memProfiles := []*pprof.Profile{}
 	for _, buffer := range memBuffers {
 		if profile, err := pprof.Parse(buffer); err == nil {
 			memProfiles = append(memProfiles, profile)
