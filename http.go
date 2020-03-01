@@ -12,56 +12,6 @@ var defaultHostAndPort string = ":6020"
 var httpMutex sync.Mutex
 var server *http.Server
 
-func parseFloat(r *http.Request, paramName string) (value float64, isFound bool, err error) {
-	if values, ok := r.URL.Query()[paramName]; ok {
-		if len(values) > 0 {
-			if value, err = strconv.ParseFloat(values[0], 64); err == nil {
-				isFound = true
-			}
-		}
-	}
-	return
-}
-
-func enable(w http.ResponseWriter, r *http.Request) {
-	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
-
-	if err != nil {
-		Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
-		w.WriteHeader(400)
-		return
-	}
-
-	if durationWasSpecified {
-		duration := time.Duration(durationInSeconds * float64(time.Second))
-		Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
-		if err := ProfileWithCallback(duration, func() {
-			Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
-		}); err != nil {
-			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
-		}
-	} else {
-		Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
-		if err := Enable(); err != nil {
-			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
-		}
-	}
-}
-
-func disable(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
-	Disable()
-}
-
-func end(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
-	End()
-}
-
-// ----------
-// Public API
-// ----------
-
 // Start the HTTP server on the specified host and port.
 //
 // The following HTTP paths will be available:
@@ -121,4 +71,50 @@ func StopHttpServer() error {
 	server = nil
 
 	return serverRef.Close()
+}
+
+func parseFloat(r *http.Request, paramName string) (value float64, isFound bool, err error) {
+	if values, ok := r.URL.Query()[paramName]; ok {
+		if len(values) > 0 {
+			if value, err = strconv.ParseFloat(values[0], 64); err == nil {
+				isFound = true
+			}
+		}
+	}
+	return
+}
+
+func enable(w http.ResponseWriter, r *http.Request) {
+	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
+
+	if err != nil {
+		Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
+		w.WriteHeader(400)
+		return
+	}
+
+	if durationWasSpecified {
+		duration := time.Duration(durationInSeconds * float64(time.Second))
+		Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
+		if err := ProfileWithCallback(duration, func() {
+			Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
+		}); err != nil {
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+		}
+	} else {
+		Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
+		if err := Enable(); err != nil {
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+		}
+	}
+}
+
+func disable(w http.ResponseWriter, r *http.Request) {
+	Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
+	Disable()
+}
+
+func end(w http.ResponseWriter, r *http.Request) {
+	Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
+	End()
 }

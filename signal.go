@@ -6,21 +6,6 @@ import (
 	"time"
 )
 
-func callFuncOnSignal(sig os.Signal, function func()) {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, sig)
-	go func() {
-		for {
-			<-sigs
-			function()
-		}
-	}()
-}
-
-// ----------
-// Public API
-// ----------
-
 // Set up a trigger to enable profiling when the specified signal is received.
 // The profiler will profile for the specified duration.
 func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
@@ -71,4 +56,15 @@ func EndOnSignal(sig os.Signal) (err error) {
 		End()
 	})
 	return
+}
+
+func callFuncOnSignal(sig os.Signal, function func()) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, sig)
+	go func() {
+		for {
+			<-sigs
+			function()
+		}
+	}()
 }
