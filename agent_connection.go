@@ -17,23 +17,23 @@ type agentConnection struct {
 }
 
 func newAgentConnection(network, address string) (*agentConnection, error) {
-	this := new(agentConnection)
-	err := this.Init(network, address)
-	return this, err
+	c := new(agentConnection)
+	err := c.Init(network, address)
+	return c, err
 }
 
-func (this *agentConnection) Init(network, address string) (err error) {
-	if this.conn, err = net.Dial(network, address); err != nil {
+func (c *agentConnection) Init(network, address string) (err error) {
+	if c.conn, err = net.Dial(network, address); err != nil {
 		return
 	}
 
-	this.reader = bufio.NewReader(this.conn)
-	this.writer = bufio.NewWriter(this.conn)
+	c.reader = bufio.NewReader(c.conn)
+	c.writer = bufio.NewWriter(c.conn)
 	return
 }
 
-func (this *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue string, err error) {
-	line, err := this.reader.ReadString('\n')
+func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue string, err error) {
+	line, err := c.reader.ReadString('\n')
 	if err != nil {
 		return
 	}
@@ -51,44 +51,44 @@ func (this *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue s
 	return
 }
 
-func (this *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
+func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
 	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
 	Log.Debug().Str("write header", line).Msgf("Send header")
-	_, err := this.writer.WriteString(line)
+	_, err := c.writer.WriteString(line)
 	return err
 }
 
-func (this *agentConnection) WriteStringHeader(name string, value string) error {
-	return this.WriteEncodedHeader(name, url.QueryEscape(value))
+func (c *agentConnection) WriteStringHeader(name string, value string) error {
+	return c.WriteEncodedHeader(name, url.QueryEscape(value))
 }
 
-func (this *agentConnection) WriteMapHeader(name string, values url.Values) error {
-	return this.WriteEncodedHeader(name, values.Encode())
+func (c *agentConnection) WriteMapHeader(name string, values url.Values) error {
+	return c.WriteEncodedHeader(name, values.Encode())
 }
 
 // Write headers in a specific order.
 // The headers are assumed to be formatted and URL encoded properly.
-func (this *agentConnection) WriteOrderedHeaders(encodedHeaders []string) error {
+func (c *agentConnection) WriteOrderedHeaders(encodedHeaders []string) error {
 	for _, header := range encodedHeaders {
 		Log.Debug().Str("write header", header).Msgf("Send ordered header")
-		if _, err := this.writer.WriteString(header); err != nil {
+		if _, err := c.writer.WriteString(header); err != nil {
 			return err
 		}
-		if _, err := this.writer.WriteString("\n"); err != nil {
+		if _, err := c.writer.WriteString("\n"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (this *agentConnection) WriteHeaders(nonEncodedHeaders map[string]interface{}) error {
+func (c *agentConnection) WriteHeaders(nonEncodedHeaders map[string]interface{}) error {
 	for k, v := range nonEncodedHeaders {
 		if asString, ok := v.(string); ok {
-			if err := this.WriteStringHeader(k, asString); err != nil {
+			if err := c.WriteStringHeader(k, asString); err != nil {
 				return err
 			}
 		} else {
-			if err := this.WriteMapHeader(k, v.(url.Values)); err != nil {
+			if err := c.WriteMapHeader(k, v.(url.Values)); err != nil {
 				return err
 			}
 		}
@@ -96,24 +96,24 @@ func (this *agentConnection) WriteHeaders(nonEncodedHeaders map[string]interface
 	return nil
 }
 
-func (this *agentConnection) WriteEndOfHeaders() (err error) {
+func (c *agentConnection) WriteEndOfHeaders() (err error) {
 	Log.Debug().Msgf("Send end-of-headers")
-	if _, err = this.writer.WriteString("\n"); err != nil {
+	if _, err = c.writer.WriteString("\n"); err != nil {
 		return
 	}
-	return this.Flush()
+	return c.Flush()
 }
 
-func (this *agentConnection) WriteRawData(data []byte) error {
-	_, err := this.writer.Write(data)
+func (c *agentConnection) WriteRawData(data []byte) error {
+	_, err := c.writer.Write(data)
 	return err
 }
 
-func (this *agentConnection) Flush() error {
-	return this.writer.Flush()
+func (c *agentConnection) Flush() error {
+	return c.writer.Flush()
 }
 
-func (this *agentConnection) Close() error {
-	this.Flush()
-	return this.conn.Close()
+func (c *agentConnection) Close() error {
+	c.Flush()
+	return c.conn.Close()
 }

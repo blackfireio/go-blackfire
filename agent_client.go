@@ -87,31 +87,31 @@ type AgentClient struct {
 }
 
 func NewAgentClient(agentSocket, blackfireQuery string) (*AgentClient, error) {
-	this := new(AgentClient)
-	if err := this.Init(agentSocket, blackfireQuery); err != nil {
+	c := new(AgentClient)
+	if err := c.Init(agentSocket, blackfireQuery); err != nil {
 		return nil, err
 	}
-	return this, nil
+	return c, nil
 }
 
 func NewAgentClientWithSigningRequest(agentSocket string, httpEndpoint *url.URL, clientID string, clientToken string) (*AgentClient, error) {
-	this := new(AgentClient)
-	if err := this.InitWithSigningRequest(agentSocket, httpEndpoint, clientID, clientToken); err != nil {
+	c := new(AgentClient)
+	if err := c.InitWithSigningRequest(agentSocket, httpEndpoint, clientID, clientToken); err != nil {
 		return nil, err
 	}
-	return this, nil
+	return c, nil
 }
 
-func (this *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
-	this.agentNetwork, this.agentAddress, err = parseNetworkAddressString(agentSocket)
+func (c *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
+	c.agentNetwork, c.agentAddress, err = parseNetworkAddressString(agentSocket)
 	if err != nil {
 		return
 	}
-	this.rawBlackfireQuery = blackfireQuery
+	c.rawBlackfireQuery = blackfireQuery
 	return
 }
 
-func (this *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndpoint *url.URL, clientID string, clientToken string) (err error) {
+func (c *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndpoint *url.URL, clientID string, clientToken string) (err error) {
 	var signingResponse map[string]interface{}
 	if signingResponse, err = sendSigningRequest(authHTTPEndpoint, clientID, clientToken); err != nil {
 		return
@@ -124,7 +124,7 @@ func (this *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndp
 	if blackfireQuery == "" {
 		return fmt.Errorf("Signing response blackfire query was empty")
 	}
-	return this.Init(agentSocket, blackfireQuery)
+	return c.Init(agentSocket, blackfireQuery)
 }
 
 func getProfileOSHeaderValue() (values url.Values, err error) {
@@ -149,30 +149,30 @@ func getProfileOSHeaderValue() (values url.Values, err error) {
 	return values, nil
 }
 
-func (this *AgentClient) getGoVersion() string {
+func (c *AgentClient) getGoVersion() string {
 	return fmt.Sprintf("go-%v", runtime.Version()[2:])
 }
 
-func (this *AgentClient) getBlackfireQueryHeader() string {
+func (c *AgentClient) getBlackfireQueryHeader() string {
 	builder := strings.Builder{}
-	builder.WriteString(this.rawBlackfireQuery)
-	if this.profileCount > 0 {
+	builder.WriteString(c.rawBlackfireQuery)
+	if c.profileCount > 0 {
 		builder.WriteString("&sub_profile=")
-		builder.WriteString(fmt.Sprintf("%09d", this.profileCount))
+		builder.WriteString(fmt.Sprintf("%09d", c.profileCount))
 	}
 	return builder.String()
 }
 
-func (this *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
+func (c *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	builder := strings.Builder{}
-	builder.WriteString(this.getGoVersion())
+	builder.WriteString(c.getGoVersion())
 	if hasBlackfireYaml {
 		builder.WriteString(", blackfire_yml")
 	}
 	return builder.String()
 }
 
-func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
+func (c *AgentClient) loadBlackfireYaml() (data []byte, err error) {
 	filenames := []string{".blackfire.yml", ".blackfire.yaml"}
 
 	var filename string
@@ -192,7 +192,7 @@ func (this *AgentClient) loadBlackfireYaml() (data []byte, err error) {
 	return
 }
 
-func (this *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
+func (c *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
 	if err = conn.WriteStringHeader("Blackfire-Yaml-Size", strconv.Itoa(len(contents))); err != nil {
 		return
 	}
@@ -202,9 +202,9 @@ func (this *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byt
 	return
 }
 
-func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
+func (c *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
-	if len(this.rawBlackfireQuery) == 0 {
+	if len(c.rawBlackfireQuery) == 0 {
 		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
 	}
 
@@ -214,7 +214,7 @@ func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) 
 	}
 
 	var blackfireYaml []byte
-	if blackfireYaml, err = this.loadBlackfireYaml(); err != nil {
+	if blackfireYaml, err = c.loadBlackfireYaml(); err != nil {
 		return
 	}
 	hasBlackfireYaml := blackfireYaml != nil
@@ -222,8 +222,8 @@ func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) 
 	// These must be done separately from the rest of the headers because they
 	// either must be sent in a specific order, or use nonstandard encoding.
 	orderedHeaders := []string{
-		fmt.Sprintf("Blackfire-Query: %v", this.getBlackfireQueryHeader()),
-		fmt.Sprintf("Blackfire-Probe: %v", this.getBlackfireProbeHeader(hasBlackfireYaml)),
+		fmt.Sprintf("Blackfire-Query: %v", c.getBlackfireQueryHeader()),
+		fmt.Sprintf("Blackfire-Probe: %v", c.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
 
 	unorderedHeaders := make(map[string]interface{})
@@ -250,7 +250,7 @@ func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) 
 			return
 		}
 		if result := values.Get("blackfire_yml"); result == "true" {
-			if err = this.sendBlackfireYaml(conn, blackfireYaml); err != nil {
+			if err = c.sendBlackfireYaml(conn, blackfireYaml); err != nil {
 				return
 			}
 		}
@@ -267,14 +267,14 @@ func (this *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) 
 	return
 }
 
-func (this *AgentClient) SendProfile(encodedProfile []byte) (err error) {
+func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 	var conn *agentConnection
-	if conn, err = newAgentConnection(this.agentNetwork, this.agentAddress); err != nil {
+	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress); err != nil {
 		return
 	}
 	defer conn.Close()
 
-	if err = this.sendProfilePrologue(conn); err != nil {
+	if err = c.sendProfilePrologue(conn); err != nil {
 		return
 	}
 
@@ -283,13 +283,13 @@ func (this *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 		return
 	}
 
-	// Force a close here so that we can catch any errors. This is idempotent
+	// Force a close here so that we can catch any errors. c is idempotent
 	// so it's fine.
 	if err = conn.Close(); err != nil {
 		return
 	}
 
-	this.profileCount++
-	Log.Debug().Msgf("Profile %v sent", this.profileCount)
+	c.profileCount++
+	Log.Debug().Msgf("Profile %v sent", c.profileCount)
 	return
 }
