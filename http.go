@@ -12,7 +12,7 @@ var defaultHostAndPort string = ":6020"
 var httpMutex sync.Mutex
 var server *http.Server
 
-// Start the HTTP server on the specified host and port.
+// StartHttpServer starts the HTTP server on the specified host and port.
 //
 // The following HTTP paths will be available:
 // - /enable : Run the profiler for either 30 seconds, or the value of the "duration" parameter (parsed as a float).
@@ -55,6 +55,7 @@ func StartHttpServer(hostAndPort string) error {
 	return nil
 }
 
+// StopHttpServer stops the HTTP server.
 func StopHttpServer() error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err

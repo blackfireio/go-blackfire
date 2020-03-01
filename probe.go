@@ -34,7 +34,7 @@ var (
 
 var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
 
-// Configure the probe (optional). This should be done before any other API calls.
+// Configure configures the probe (optional). This should be done before any other API calls.
 // If this function isn't called, the probe will get its configuration from
 // the ENV variables and the default blackfire.ini file location.
 //
@@ -57,15 +57,14 @@ func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err er
 	return
 }
 
-// Check if the profiler is running. Only one profiler may run at a time.
+// IsProfiling checks if the profiler is running. Only one profiler may run at a time.
 func IsProfiling() bool {
 	return currentState != profilerStateIdle
 }
 
-// Does the following:
-// - Profile the current process for the specified duration.
-// - Connect to the agent and upload the generated profile.
-// - Call the callback in a goroutine (if not null).
+// ProfileWithCallback profiles the current process for the specified duration.
+// It also connects to the agent and upload the generated profile.
+// and calls the callback in a goroutine (if not null).
 func ProfileWithCallback(duration time.Duration, callback func()) error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
@@ -109,7 +108,7 @@ func ProfileFor(duration time.Duration) error {
 	return ProfileWithCallback(duration, nil)
 }
 
-// Start profiling. Profiling will continue until you call StopProfiling().
+// Enable starts profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
 func Enable() error {
@@ -120,7 +119,7 @@ func Enable() error {
 	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
 
-// Stop profiling.
+// Disable stops profiling.
 func Disable() error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
@@ -138,7 +137,7 @@ func Disable() error {
 	return nil
 }
 
-// Stop profiling and upload the result to the agent.
+// End stops profiling and upload the result to the agent.
 func End() error {
 	if err := assertConfigurationIsValid(); err != nil {
 		return err
