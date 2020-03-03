@@ -29,6 +29,7 @@ var (
 	currentState                profilerState
 	cpuProfileBuffers           []*bytes.Buffer
 	memProfileBuffers           []*bytes.Buffer
+	profileEndCallback          func()
 )
 
 var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
@@ -84,19 +85,14 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 		return err
 	}
 
-	channel := make(chan bool)
-
-	go func() {
-		shouldEndProfile := <-channel
-		onProfileDisableTriggered(shouldEndProfile, callback)
-	}()
+	profileEndCallback = callback
+	channel := triggerDisableProfilingChan
+	shouldEndProfile := false
 
 	go func() {
 		<-time.After(duration)
-		channel <- true
+		channel <- shouldEndProfile
 	}()
-
-	triggerDisableProfilingChan = channel
 
 	return nil
 }
@@ -136,6 +132,7 @@ func Disable() error {
 	defer profilerMutex.Unlock()
 
 	if !canDisableProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", currentState)
 		return nil
 	}
 
@@ -155,6 +152,7 @@ func End() error {
 	defer profilerMutex.Unlock()
 
 	if !canEndProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to End(), but state = %v", currentState)
 		return nil
 	}
 
@@ -173,12 +171,13 @@ func EndAndWait() error {
 	defer profilerMutex.Unlock()
 
 	if !canEndProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", currentState)
 		return nil
 	}
 
-	Log.Debug().Msgf("Ending the current profile and blocking until it's uploaded")
+	Log.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
 	endProfile()
-	Log.Debug().Msgf("Profile uploaded. Unblocking.")
+	Log.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
 	return nil
 }
 
@@ -187,6 +186,21 @@ func init() {
 	// and listed whenever the user makes an API call. If the user calls
 	// Configure(), the errors list will get replaced.
 	blackfireConfig.configure(nil, "")
+
+	go func() {
+		for {
+			triggerDisableProfilingChan = newDisableProfilerTriggerChan()
+			shouldEndProfile := <-triggerDisableProfilingChan
+			onProfileDisableTriggered(shouldEndProfile, profileEndCallback)
+
+		}
+	}()
+}
+
+func newDisableProfilerTriggerChan() chan bool {
+	// Use a large queue for the rare edge case where many goroutines try
+	// to trigger the same channel before it gets rebuilt.
+	return make(chan bool, 100)
 }
 
 func addNewProfileBufferSet() {
@@ -228,7 +242,7 @@ func canEnableProfiling() bool {
 	case profilerStateEnabled, profilerStateSending:
 		return false
 	default:
-		panic(fmt.Errorf("Unhandled state: %v", currentState))
+		panic(fmt.Errorf("Blackfire: Unhandled state: %v", currentState))
 	}
 }
 
@@ -239,7 +253,7 @@ func canDisableProfiling() bool {
 	case profilerStateOff, profilerStateDisabled, profilerStateSending:
 		return false
 	default:
-		panic(fmt.Errorf("Unhandled state: %v", currentState))
+		panic(fmt.Errorf("Blackfire: Unhandled state: %v", currentState))
 	}
 }
 
@@ -250,7 +264,7 @@ func canEndProfiling() bool {
 	case profilerStateOff, profilerStateSending:
 		return false
 	default:
-		panic(fmt.Errorf("Unhandled state: %v", currentState))
+		panic(fmt.Errorf("Blackfire: Unhandled state: %v", currentState))
 	}
 }
 
@@ -258,6 +272,7 @@ func enableProfiling() error {
 	Log.Debug().Msgf("Blackfire: Start profiling")
 
 	if !canEnableProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", currentState)
 		if IsProfiling() {
 			return ProfilerErrorAlreadyProfiling
 		}
@@ -343,12 +358,11 @@ func endProfile() error {
 }
 
 func triggerStopProfiler(shouldEndProfile bool) {
-	channel := triggerDisableProfilingChan
-	triggerDisableProfilingChan = make(chan bool)
-	channel <- shouldEndProfile
+	triggerDisableProfilingChan <- shouldEndProfile
 }
 
 func onProfileDisableTriggered(shouldEndProfile bool, callback func()) {
+	Log.Debug().Msgf("Blackfire: Received profile disable trigger. shouldEndProfile = %v, callback = %p", shouldEndProfile, callback)
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 

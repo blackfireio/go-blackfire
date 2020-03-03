@@ -37,7 +37,9 @@ func DisableOnSignal(sig os.Signal) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		Log.Info().Msgf("Blackfire (%v): Disable profiling\n", sig)
-		Disable()
+		if err := Disable(); err != nil {
+			Log.Error().Msgf("Blackfire (DisableOnSignal): %v\n", err)
+		}
 	})
 	return
 }
@@ -53,7 +55,9 @@ func EndOnSignal(sig os.Signal) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		Log.Info().Msgf("Blackfire (%v): End profile\n", sig)
-		End()
+		if err := End(); err != nil {
+			Log.Error().Msgf("Blackfire (EndOnSignal): %v\n", err)
+		}
 	})
 	return
 }
