@@ -234,30 +234,33 @@ func (c *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	if err = conn.WriteOrderedHeaders(orderedHeaders); err != nil {
 		return
 	}
-	if err = conn.WriteEndOfHeaders(); err != nil {
-		return
-	}
 
-	var responseName string
-	var responseValue string
-	if responseName, responseValue, err = conn.ReadEncodedHeader(); err != nil {
-		return
-	}
-	switch responseName {
-	case "Blackfire-Response":
-		var values url.Values
-		if values, err = url.ParseQuery(responseValue); err != nil {
+	if hasBlackfireYaml {
+		if err = conn.WriteEndOfHeaders(); err != nil {
 			return
 		}
-		if result := values.Get("blackfire_yml"); result == "true" {
-			if err = c.sendBlackfireYaml(conn, blackfireYaml); err != nil {
+
+		var responseName string
+		var responseValue string
+		if responseName, responseValue, err = conn.ReadEncodedHeader(); err != nil {
+			return
+		}
+		switch responseName {
+		case "Blackfire-Response":
+			var values url.Values
+			if values, err = url.ParseQuery(responseValue); err != nil {
 				return
 			}
+			if result := values.Get("blackfire_yml"); result == "true" {
+				if err = c.sendBlackfireYaml(conn, blackfireYaml); err != nil {
+					return
+				}
+			}
+		case "Blackfire-Error":
+			return fmt.Errorf(strings.TrimSpace(responseValue))
+		default:
+			return fmt.Errorf("Unexpected agent response: %v", responseValue)
 		}
-	case "Blackfire-Error":
-		return fmt.Errorf(strings.TrimSpace(responseValue))
-	default:
-		return fmt.Errorf("Unexpected agent response: %v", responseValue)
 	}
 
 	if err = conn.WriteHeaders(unorderedHeaders); err != nil {
@@ -283,7 +286,7 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 		return
 	}
 
-	// Force a close here so that we can catch any errors. c is idempotent
+	// Force a close here so that we can catch any errors. conn is idempotent
 	// so it's fine.
 	if err = conn.Close(); err != nil {
 		return
