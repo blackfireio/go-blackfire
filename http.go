@@ -1,83 +1,21 @@
 package blackfire
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
+	"strings"
 	"time"
 )
 
-var defaultHostAndPort string = ":6020"
-var httpMutex sync.Mutex
-var server *http.Server
-
-// StartHttpServer starts the HTTP server on the specified host and port.
-//
-// The following HTTP paths will be available:
-// - /enable : Run the profiler for either 30 seconds, or the value of the "duration" parameter (parsed as a float).
-// - /disable : Stop the profiler (if running).
-// - /end : End the current profile and upload to Blackfire
-//
-// Supplying a hostAndPort value of "" will choose the default of ":6020"
-func StartHttpServer(hostAndPort string) (err error) {
-	if !allowProfiling {
-		return
-	}
-	if err = assertConfigurationIsValid(); err != nil {
-		return
-	}
-
-	httpMutex.Lock()
-	defer httpMutex.Unlock()
-
-	if server != nil {
-		return fmt.Errorf("Already serving HTTP")
-	}
-
-	if hostAndPort == "" {
-		hostAndPort = defaultHostAndPort
-	}
-
-	Log.Info().Msgf("Blackfire (HTTP): Listening on [%v]. Paths are /enable, /disable, /end\n", hostAndPort)
-
+// NewServeMux returns an http.ServerMux that allows to manage profiling from HTTP
+func NewServeMux(prefix string) *http.ServeMux {
+	prefix = strings.Trim(prefix, "/")
 	mux := http.NewServeMux()
-	mux.HandleFunc("/enable", EnableHandler)
-	mux.HandleFunc("/disable", DisableHandler)
-	mux.HandleFunc("/end", EndHandler)
+	mux.HandleFunc("/"+prefix+"/enable", EnableHandler)
+	mux.HandleFunc("/"+prefix+"/disable", DisableHandler)
+	mux.HandleFunc("/"+prefix+"/end", EndHandler)
 
-	server = new(http.Server)
-	server.Addr = hostAndPort
-	server.Handler = mux
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			Log.Error().Msgf("Blackfire (StartServer): %v\n", err)
-		}
-	}()
-
-	return
-}
-
-// StopHttpServer stops the HTTP server.
-func StopHttpServer() (err error) {
-	if !allowProfiling {
-		return
-	}
-	if err = assertConfigurationIsValid(); err != nil {
-		return
-	}
-
-	httpMutex.Lock()
-	defer httpMutex.Unlock()
-
-	if server == nil {
-		return
-	}
-
-	serverRef := server
-	server = nil
-
-	return serverRef.Close()
+	return mux
 }
 
 // EnableHandler starts profiling via HTTP
