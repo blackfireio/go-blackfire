@@ -42,9 +42,9 @@ func StartHttpServer(hostAndPort string) (err error) {
 	Log.Info().Msgf("Blackfire (HTTP): Listening on [%v]. Paths are /enable, /disable, /end\n", hostAndPort)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/enable", enable)
-	mux.HandleFunc("/disable", disable)
-	mux.HandleFunc("/end", end)
+	mux.HandleFunc("/enable", EnableHandler)
+	mux.HandleFunc("/disable", DisableHandler)
+	mux.HandleFunc("/end", EndHandler)
 
 	server = new(http.Server)
 	server.Addr = hostAndPort
@@ -80,18 +80,8 @@ func StopHttpServer() (err error) {
 	return serverRef.Close()
 }
 
-func parseFloat(r *http.Request, paramName string) (value float64, isFound bool, err error) {
-	if values, ok := r.URL.Query()[paramName]; ok {
-		if len(values) > 0 {
-			if value, err = strconv.ParseFloat(values[0], 64); err == nil {
-				isFound = true
-			}
-		}
-	}
-	return
-}
-
-func enable(w http.ResponseWriter, r *http.Request) {
+// EnableHandler starts profiling via HTTP
+func EnableHandler(w http.ResponseWriter, r *http.Request) {
 	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
 
 	if err != nil {
@@ -116,12 +106,25 @@ func enable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func disable(w http.ResponseWriter, r *http.Request) {
+// DisableHandler stops profiling via HTTP
+func DisableHandler(w http.ResponseWriter, r *http.Request) {
 	Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
 	Disable()
 }
 
-func end(w http.ResponseWriter, r *http.Request) {
+// EndHandler stops profiling via HTTP and send the profile to the agent
+func EndHandler(w http.ResponseWriter, r *http.Request) {
 	Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
 	End()
+}
+
+func parseFloat(r *http.Request, paramName string) (value float64, isFound bool, err error) {
+	if values, ok := r.URL.Query()[paramName]; ok {
+		if len(values) > 0 {
+			if value, err = strconv.ParseFloat(values[0], 64); err == nil {
+				isFound = true
+			}
+		}
+	}
+	return
 }
