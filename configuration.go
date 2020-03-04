@@ -14,6 +14,10 @@ import (
 	"github.com/go-ini/ini"
 )
 
+func isBlackfireQueryEnvSet() bool {
+	return readEnvVar("BLACKFIRE_QUERY") != ""
+}
+
 type BlackfireConfiguration struct {
 	// True if this configuration has been validated and is ready for use.
 	isValid bool

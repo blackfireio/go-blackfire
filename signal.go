@@ -9,6 +9,9 @@ import (
 // EnableOnSignal sets up a trigger to enable profiling when the specified signal is received.
 // The profiler will profile for the specified duration.
 func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
+	if !allowProfiling {
+		return
+	}
 	if err = assertConfigurationIsValid(); err != nil {
 		return
 	}
@@ -29,6 +32,9 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 
 // DisableOnSignal sets up a trigger to disable profiling when the specified signal is received.
 func DisableOnSignal(sig os.Signal) (err error) {
+	if !allowProfiling {
+		return
+	}
 	if err = assertConfigurationIsValid(); err != nil {
 		return
 	}
@@ -47,6 +53,9 @@ func DisableOnSignal(sig os.Signal) (err error) {
 // EndOnSignal sets up a trigger to end the current profile and upload to Blackfire when the
 // specified signal is received.
 func EndOnSignal(sig os.Signal) (err error) {
+	if !allowProfiling {
+		return
+	}
 	if err = assertConfigurationIsValid(); err != nil {
 		return
 	}

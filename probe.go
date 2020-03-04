@@ -22,6 +22,7 @@ const (
 )
 
 var (
+	allowProfiling              = true
 	blackfireConfig             BlackfireConfiguration
 	agentClient                 *AgentClient
 	profilerMutex               sync.Mutex
@@ -51,6 +52,9 @@ var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently
 // manualConfig will be ignored if nil.
 // iniFilePath will be ignored if "".
 func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err error) {
+	if !allowProfiling {
+		return
+	}
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 	blackfireConfig.configure(manualConfig, iniFilePath)
@@ -59,30 +63,50 @@ func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err er
 
 // IsProfiling checks if the profiler is running. Only one profiler may run at a time.
 func IsProfiling() bool {
+	if !allowProfiling {
+		return false
+	}
 	return currentState == profilerStateEnabled || currentState == profilerStateSending
 }
 
 // ProfileWithCallback profiles the current process for the specified duration.
 // It also connects to the agent and upload the generated profile.
 // and calls the callback in a goroutine (if not null).
-func ProfileWithCallback(duration time.Duration, callback func()) error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func ProfileWithCallback(duration time.Duration, callback func()) (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
+	}
+
+	// Note: We do this once on each side of the mutex to be 100% sure that it's
+	// impossible for deferred/idempotent calls to deadlock, here and forever.
+	if !canEnableProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", currentState)
+		if IsProfiling() {
+			return ProfilerErrorAlreadyProfiling
+		}
+		return
 	}
 
 	profilerMutex.Lock()
 	defer profilerMutex.Unlock()
 
-	// Note: The check for "can enable" is inside enableProfiling()
-	// It must reside there because it returns an error if we're currently
-	// profiling, or sending the profile to the agent.
+	if !canEnableProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", currentState)
+		if IsProfiling() {
+			return ProfilerErrorAlreadyProfiling
+		}
+		return
+	}
 
 	if duration > blackfireConfig.MaxProfileDuration {
 		duration = blackfireConfig.MaxProfileDuration
 	}
 
-	if err := enableProfiling(); err != nil {
-		return err
+	if err = enableProfiling(); err != nil {
+		return
 	}
 
 	profileEndCallback = callback
@@ -94,38 +118,36 @@ func ProfileWithCallback(duration time.Duration, callback func()) error {
 		channel <- shouldEndProfile
 	}()
 
-	return nil
+	return
 }
 
 // ProfileFor profiles the current process for the specified duration, then
 // connects to the agent and uploads the generated profile.
-func ProfileFor(duration time.Duration) error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
-	}
-
-	// Note: The check for "can enable" is inside ProfileWithCallback()
-
+func ProfileFor(duration time.Duration) (err error) {
 	return ProfileWithCallback(duration, nil)
 }
 
 // Enable starts profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
-func Enable() error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
-	}
-
-	// Note: The check for "can enable" is inside ProfileFor()
-
+func Enable() (err error) {
 	return ProfileFor(blackfireConfig.MaxProfileDuration)
 }
 
 // Disable stops profiling.
-func Disable() error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func Disable() (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
+	}
+
+	// Note: We do this once on each side of the mutex to be 100% sure that it's
+	// impossible for deferred/idempotent calls to deadlock, here and forever.
+	if !canDisableProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", currentState)
+		return
 	}
 
 	profilerMutex.Lock()
@@ -133,19 +155,29 @@ func Disable() error {
 
 	if !canDisableProfiling() {
 		Log.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", currentState)
-		return nil
+		return
 	}
 
 	triggerStopProfiler(false)
-	return nil
+	return
 }
 
 // End stops profiling, then uploads the result to the agent in a separate
 // goroutine. You must ensure that the program does not exit before uploading
 // is complete. If you can't make such a guarantee, use EndAndWait() instead.
-func End() error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func End() (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
+	}
+
+	// Note: We do this once on each side of the mutex to be 100% sure that it's
+	// impossible for deferred/idempotent calls to deadlock, here and forever.
+	if !canEndProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to End(), but state = %v", currentState)
+		return
 	}
 
 	profilerMutex.Lock()
@@ -153,18 +185,28 @@ func End() error {
 
 	if !canEndProfiling() {
 		Log.Debug().Msgf("Blackfire: Tried to End(), but state = %v", currentState)
-		return nil
+		return
 	}
 
 	triggerStopProfiler(true)
-	return nil
+	return
 }
 
 // EndAndWait ends the current profile, then blocks until the result is uploaded
 // to the agent.
-func EndAndWait() error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func EndAndWait() (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
+	}
+
+	// Note: We do this once on each side of the mutex to be 100% sure that it's
+	// impossible for deferred/idempotent calls to deadlock, here and forever.
+	if !canEndProfiling() {
+		Log.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", currentState)
+		return
 	}
 
 	profilerMutex.Lock()
@@ -172,13 +214,22 @@ func EndAndWait() error {
 
 	if !canEndProfiling() {
 		Log.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", currentState)
-		return nil
+		return
 	}
 
 	Log.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
 	endProfile()
 	Log.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
-	return nil
+	return
+}
+
+// ProfileOnDemandOnly completely disables the profiler unless the BLACKFIRE_QUERY
+// env variable is set. When the profiler is disabled, all API calls become no-ops.
+//
+// Only call this function before all other API calls. Calling it after another
+// API call in this module will lead to undefined behavior.
+func ProfileOnDemandOnly() {
+	allowProfiling = isBlackfireQueryEnvSet()
 }
 
 func init() {
@@ -187,6 +238,10 @@ func init() {
 	// Configure(), the errors list will get replaced.
 	blackfireConfig.configure(nil, "")
 
+	startTriggerRearmLoop()
+}
+
+func startTriggerRearmLoop() {
 	go func() {
 		for {
 			triggerDisableProfilingChan = newDisableProfilerTriggerChan()
@@ -270,14 +325,6 @@ func canEndProfiling() bool {
 
 func enableProfiling() error {
 	Log.Debug().Msgf("Blackfire: Start profiling")
-
-	if !canEnableProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", currentState)
-		if IsProfiling() {
-			return ProfilerErrorAlreadyProfiling
-		}
-		return nil
-	}
 
 	addNewProfileBufferSet()
 

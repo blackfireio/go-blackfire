@@ -20,9 +20,12 @@ var server *http.Server
 // - /end : End the current profile and upload to Blackfire
 //
 // Supplying a hostAndPort value of "" will choose the default of ":6020"
-func StartHttpServer(hostAndPort string) error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func StartHttpServer(hostAndPort string) (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
 	}
 
 	httpMutex.Lock()
@@ -52,20 +55,23 @@ func StartHttpServer(hostAndPort string) error {
 		}
 	}()
 
-	return nil
+	return
 }
 
 // StopHttpServer stops the HTTP server.
-func StopHttpServer() error {
-	if err := assertConfigurationIsValid(); err != nil {
-		return err
+func StopHttpServer() (err error) {
+	if !allowProfiling {
+		return
+	}
+	if err = assertConfigurationIsValid(); err != nil {
+		return
 	}
 
 	httpMutex.Lock()
 	defer httpMutex.Unlock()
 
 	if server == nil {
-		return nil
+		return
 	}
 
 	serverRef := server
