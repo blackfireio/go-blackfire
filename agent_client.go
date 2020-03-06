@@ -27,6 +27,14 @@ type agentClient struct {
 	signingAuth         string
 	firstBlackfireQuery string
 	rawBlackfireQuery   string
+	links               []linksMap
+}
+
+type linksMap map[string]map[string]string
+
+type signature struct {
+	QueryString string   `json:"query_string"`
+	Links       linksMap `json:"_links"`
 }
 
 func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error) {
@@ -44,6 +52,7 @@ func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error)
 		signingEndpoint:     signingEndpoint,
 		signingAuth:         fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
 		firstBlackfireQuery: configuration.BlackfireQuery,
+		links:               make([]linksMap, 10),
 	}, nil
 }
 
@@ -56,20 +65,18 @@ func (c *agentClient) StartNewRequest() error {
 		return nil
 	}
 
-	signingResponse, err := c.sendSigningRequest()
-	if err != nil {
-		return err
+	return c.createRequest()
+}
+
+func (c *agentClient) LastProfileURLs() []string {
+	urls := []string{}
+	for _, links := range c.links {
+		if graphURL, ok := links["graph_url"]; ok {
+			urls = append(urls, graphURL["href"])
+		}
 	}
 
-	blackfireQuery, ok := signingResponse["query_string"].(string)
-	if !ok {
-		return fmt.Errorf("Signing response didn't contain blackfire query")
-	}
-	if blackfireQuery == "" {
-		return fmt.Errorf("Signing response blackfire query was empty")
-	}
-	c.rawBlackfireQuery = blackfireQuery
-	return nil
+	return urls
 }
 
 func (c *agentClient) getGoVersion() string {
@@ -229,7 +236,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	return
 }
 
-func (c *agentClient) sendSigningRequest() (signingResponse map[string]interface{}, err error) {
+func (c *agentClient) createRequest() (err error) {
 	var request *http.Request
 	var response *http.Response
 	Log.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
@@ -254,11 +261,17 @@ func (c *agentClient) sendSigningRequest() (signingResponse map[string]interface
 		return
 	}
 	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
+	var signingResponse signature
 	err = json.Unmarshal(responseData, &signingResponse)
 	if err != nil {
 		err = fmt.Errorf("JSON error: %v", err)
 		return
 	}
+	if signingResponse.QueryString == "" {
+		return fmt.Errorf("Signing response blackfire query was empty")
+	}
+	c.rawBlackfireQuery = signingResponse.QueryString
+	c.links = append([]linksMap{signingResponse.Links}, c.links[:9]...)
 	return
 }
 
