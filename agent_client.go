@@ -102,6 +102,11 @@ func NewAgentClientWithSigningRequest(agentSocket string, httpEndpoint *url.URL,
 	return c, nil
 }
 
+func (c *AgentClient) NewSigningRequest(agentSocket string, httpEndpoint *url.URL, clientID string, clientToken string) error {
+	c.profileCount = 0
+	return c.InitWithSigningRequest(agentSocket, httpEndpoint, clientID, clientToken)
+}
+
 func (c *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
 	c.agentNetwork, c.agentAddress, err = parseNetworkAddressString(agentSocket)
 	if err != nil {
