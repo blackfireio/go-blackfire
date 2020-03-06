@@ -2,10 +2,15 @@ package blackfire
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	_ "github.com/blackfireio/go-blackfire/statik"
+	"github.com/rakyll/statik/fs"
 )
 
 type problem struct {
@@ -21,11 +26,44 @@ func NewServeMux(prefix string) (mux *http.ServeMux, err error) {
 	}
 	prefix = strings.Trim(prefix, "/")
 	mux = http.NewServeMux()
+	mux.HandleFunc("/"+prefix+"/dashboard", DashboardHandler)
+	mux.HandleFunc("/"+prefix+"/dashboard_api", DashboardApiHandler)
 	mux.HandleFunc("/"+prefix+"/enable", EnableHandler)
 	mux.HandleFunc("/"+prefix+"/disable", DisableHandler)
 	mux.HandleFunc("/"+prefix+"/end", EndHandler)
 
 	return
+}
+
+// DashboardHandler displays the current status of the profiler
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	statikFS, err := fs.New()
+	if err != nil {
+		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		w.WriteHeader(500)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	f, err := statikFS.Open("/index.html")
+	if err != nil {
+		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		w.WriteHeader(500)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	defer f.Close()
+	contents, err := ioutil.ReadAll(f)
+	if err != nil {
+		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		w.WriteHeader(500)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	w.Write(contents)
+}
+
+func DashboardApiHandler(w http.ResponseWriter, r *http.Request) {
+	writeJsonStatus(w)
 }
 
 // EnableHandler starts profiling via HTTP
@@ -48,7 +86,7 @@ func EnableHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "Enable error", Detail: err.Error()})
 	} else {
-		writeJsonSuccess(w)
+		writeJsonStatus(w)
 	}
 }
 
@@ -58,7 +96,7 @@ func DisableHandler(w http.ResponseWriter, r *http.Request) {
 	if err := globalProbe.Disable(); err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "Disable error", Detail: err.Error()})
 	} else {
-		writeJsonSuccess(w)
+		writeJsonStatus(w)
 	}
 }
 
@@ -68,7 +106,7 @@ func EndHandler(w http.ResponseWriter, r *http.Request) {
 	if err := globalProbe.EndAndWait(); err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "End error", Detail: err.Error()})
 	} else {
-		writeJsonSuccess(w)
+		writeJsonStatus(w)
 	}
 }
 
@@ -90,7 +128,33 @@ func writeJsonError(w http.ResponseWriter, problem *problem) {
 	w.Write(data)
 }
 
-func writeJsonSuccess(w http.ResponseWriter) {
+func writeJsonStatus(w http.ResponseWriter) {
+	profiling := "false"
+	if globalProbe.currentState == profilerStateEnabled {
+		profiling = "true"
+	}
+	profiles := []string{}
+	if globalProbe.agentClient != nil {
+		for _, profile := range globalProbe.agentClient.LastProfiles() {
+			profiles = append(profiles, fmt.Sprintf(`{
+	"UUID": "%s",
+	"url": "%s",
+	"name": "un-named profile",
+	"status": "%s",
+	"created_at": "%s"
+}`, profile.UUID, profile.URL, profile.Status.Name, profile.CreatedAt.Format(time.RFC3339)))
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte("{}"))
+	w.Write([]byte(fmt.Sprintf(`{
+	"profiling": {
+		"enabled": %s,
+		"sample_rate": %d
+	},
+	"profiles": {
+		"_embedded": [
+			%s
+		]
+	}
+}`, profiling, globalProbe.configuration.DefaultCPUSampleRateHz, strings.Join(profiles, ","))))
 }
