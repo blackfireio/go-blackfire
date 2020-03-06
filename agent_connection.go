@@ -51,6 +51,25 @@ func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue stri
 	return
 }
 
+func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
+	response := make(map[string]url.Values)
+
+	for {
+		name, urlEncodedValue, err := c.ReadEncodedHeader()
+		if err != nil {
+			return nil, err
+		}
+		if name == "" {
+			break
+		}
+		response[name], err = url.ParseQuery(urlEncodedValue)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return response, nil
+}
+
 func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
 	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
 	Log.Debug().Str("write header", line).Msgf("Send header")

@@ -275,10 +275,27 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress); err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		if err == nil {
+			c.profileCount++
+			Log.Debug().Msgf("Profile %v sent", c.profileCount)
+			err = conn.Close()
+		} else {
+			// We want the error that occurred earlier, not an error from close.
+			conn.Close()
+		}
+	}()
 
 	if err = c.sendProfilePrologue(conn); err != nil {
 		return
+	}
+
+	var response map[string]url.Values
+	if response, err = conn.ReadResponse(); err != nil {
+		return err
+	}
+	if errResp, ok := response["Blackfire-Error"]; ok {
+		return fmt.Errorf("Blackfire-Error: %v", errResp)
 	}
 
 	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
@@ -286,13 +303,5 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 		return
 	}
 
-	// Force a close here so that we can catch any errors. conn is idempotent
-	// so it's fine.
-	if err = conn.Close(); err != nil {
-		return
-	}
-
-	c.profileCount++
-	Log.Debug().Msgf("Profile %v sent", c.profileCount)
 	return
 }
