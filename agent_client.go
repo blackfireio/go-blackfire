@@ -158,7 +158,7 @@ func (c *AgentClient) getBlackfireQueryHeader() string {
 	builder.WriteString(c.rawBlackfireQuery)
 	if c.profileCount > 0 {
 		builder.WriteString("&sub_profile=")
-		builder.WriteString(fmt.Sprintf("%09d", c.profileCount))
+		builder.WriteString(fmt.Sprintf(":%09d", c.profileCount))
 	}
 	return builder.String()
 }
