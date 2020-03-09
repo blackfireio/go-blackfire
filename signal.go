@@ -9,10 +9,10 @@ import (
 // EnableOnSignal sets up a trigger to enable profiling when the specified signal is received.
 // The profiler will profile for the specified duration.
 func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
-	if !allowProfiling {
+	if !globalProbe.allowProfiling {
 		return
 	}
-	if err = assertConfigurationIsValid(); err != nil {
+	if err = globalProbe.assertConfigurationIsValid(); err != nil {
 		return
 	}
 
@@ -20,7 +20,7 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		Log.Info().Msgf("Blackfire (%v): Profiling for %v seconds\n", sig, float64(duration)/1000000000)
-		if err := ProfileWithCallback(duration, func() {
+		if err := globalProbe.ProfileWithCallback(duration, func() {
 			Log.Info().Msgf("Blackfire (%v): Profile complete\n", sig)
 		}); err != nil {
 			Log.Error().Msgf("Blackfire (EnableOnSignal): %v\n", err)
@@ -32,10 +32,10 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 
 // DisableOnSignal sets up a trigger to disable profiling when the specified signal is received.
 func DisableOnSignal(sig os.Signal) (err error) {
-	if !allowProfiling {
+	if !globalProbe.allowProfiling {
 		return
 	}
-	if err = assertConfigurationIsValid(); err != nil {
+	if err = globalProbe.assertConfigurationIsValid(); err != nil {
 		return
 	}
 
@@ -43,7 +43,7 @@ func DisableOnSignal(sig os.Signal) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		Log.Info().Msgf("Blackfire (%v): Disable profiling\n", sig)
-		if err := Disable(); err != nil {
+		if err := globalProbe.Disable(); err != nil {
 			Log.Error().Msgf("Blackfire (DisableOnSignal): %v\n", err)
 		}
 	})
@@ -53,10 +53,10 @@ func DisableOnSignal(sig os.Signal) (err error) {
 // EndOnSignal sets up a trigger to end the current profile and upload to Blackfire when the
 // specified signal is received.
 func EndOnSignal(sig os.Signal) (err error) {
-	if !allowProfiling {
+	if !globalProbe.allowProfiling {
 		return
 	}
-	if err = assertConfigurationIsValid(); err != nil {
+	if err = globalProbe.assertConfigurationIsValid(); err != nil {
 		return
 	}
 
@@ -64,7 +64,7 @@ func EndOnSignal(sig os.Signal) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		Log.Info().Msgf("Blackfire (%v): End profile\n", sig)
-		if err := End(); err != nil {
+		if err := globalProbe.End(); err != nil {
 			Log.Error().Msgf("Blackfire (EndOnSignal): %v\n", err)
 		}
 	})
