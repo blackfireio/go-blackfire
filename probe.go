@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type probe struct {
 	cpuProfileBuffers     []*bytes.Buffer
 	memProfileBuffers     []*bytes.Buffer
 	profileEndCallback    func()
+	cpuSampleRate         int
 }
 
 func newProbe() *probe {
@@ -296,6 +298,25 @@ func (p *probe) enableProfiling() error {
 
 	p.addNewProfileBufferSet()
 
+	if p.cpuSampleRate == 0 {
+		p.cpuSampleRate = p.configuration.DefaultCPUSampleRateHz
+	}
+
+	// We call SetCPUProfileRate before StartCPUProfile in order to lock in our
+	// desired sample rate. When SetCPUProfileRate is called with a non-zero
+	// value, profiling is considered "ON". Any attempt to change the sample
+	// rate without first setting it back to 0 will fail. However, since
+	// SetCPUProfileRate has no return value, there's no way to check for this
+	// failure (Note: it will print "runtime: cannot set cpu profile rate until
+	// previous profile has finished" to stderr). Since StartCPUProfile can't
+	// know if its call to SetCPUProfileRate failed, it will just carry on with
+	// the profiling (at our selected rate).
+	runtime.SetCPUProfileRate(0)
+	if p.cpuSampleRate != golangDefaultCPUSampleRate {
+		// Only pre-set if it's different from what StartCPUProfile would set.
+		// This avoids the unsightly error message whenever possible.
+		runtime.SetCPUProfileRate(p.cpuSampleRate)
+	}
 	if err := pprof.StartCPUProfile(p.currentCPUBuffer()); err != nil {
 		return err
 	}

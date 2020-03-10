@@ -14,6 +14,10 @@ import (
 	"github.com/go-ini/ini"
 )
 
+// This must match the value of `hz` in StartCPUProfile in runtime/pprof/pprof.go
+// It's always been 100hz since the beginning, so it should be safe.
+const golangDefaultCPUSampleRate = 100
+
 func isBlackfireQueryEnvSet() bool {
 	return readEnvVar("BLACKFIRE_QUERY") != ""
 }
@@ -46,6 +50,10 @@ type BlackfireConfiguration struct {
 	// this duration (default 10 minutes).
 	// This guards against runaway profile operations.
 	MaxProfileDuration time.Duration
+	// Default rate at which the CPU samples are taken. Values > 500 will likely
+	// exceed the abilities of most environments.
+	// See https://golang.org/src/runtime/pprof/pprof.go#L727
+	DefaultCPUSampleRateHz int
 }
 
 func (c *BlackfireConfiguration) setEndpoint(endpoint string) error {
@@ -117,6 +125,7 @@ func (c *BlackfireConfiguration) configureFromDefaults() {
 	c.LogLevel = 3
 	c.AgentTimeout = time.Millisecond * 250
 	c.MaxProfileDuration = time.Minute * 10
+	c.DefaultCPUSampleRateHz = golangDefaultCPUSampleRate
 
 	setLogFile(c.LogFile)
 	setLogLevel(c.LogLevel)
