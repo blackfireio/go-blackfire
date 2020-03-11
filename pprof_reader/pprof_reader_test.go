@@ -60,8 +60,7 @@ func toLineSet(data []byte) map[string]bool {
 
 // 	var b bytes.Buffer
 // 	writer := bufio.NewWriter(&b)
-// 	entryPoint := profile.BiggestImpactEntryPoint()
-// 	err = WriteBFFormat(profile, entryPoint, writer)
+// 	err = WriteBFFormat(profile, writer)
 // 	if err != nil {
 // 		t.Error(err)
 // 		return

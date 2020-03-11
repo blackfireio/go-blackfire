@@ -24,7 +24,6 @@ if err != nil {
 	return nil, err
 }
 
-entryPoint := profile.BiggestImpactEntryPoint()
-err = pprof_reader.WriteBFFormat(profile, entryPoint, os.Stdout)
+err = pprof_reader.WriteBFFormat(profile, os.Stdout)
 ...
 ```

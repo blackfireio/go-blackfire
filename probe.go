@@ -383,7 +383,7 @@ func (p *probe) endProfile() error {
 	}
 
 	profileBuffer := new(bytes.Buffer)
-	if err := pprof_reader.WriteBFFormat(profile, profile.BiggestImpactEntryPoint(), profileBuffer); err != nil {
+	if err := pprof_reader.WriteBFFormat(profile, profileBuffer); err != nil {
 		return err
 	}
 

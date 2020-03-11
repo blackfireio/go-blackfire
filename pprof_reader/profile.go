@@ -122,7 +122,7 @@ func (p *Profile) HasData() bool {
 	return len(p.EntryPoints) > 0
 }
 
-func (p *Profile) BiggestImpactEntryPoint() string {
+func (p *Profile) biggestImpactEntryPoint() string {
 	if len(p.EntryPointsLargeToSmall) == 0 {
 		panic(fmt.Errorf("No entry points found!"))
 	}
@@ -228,7 +228,7 @@ func generateContextString() string {
 }
 
 // Write a parsed profile out as a Blackfire profile.
-func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
+func WriteBFFormat(profile *Profile, w io.Writer) error {
 	osInfo, err := osinfo.GetOSInfo()
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 
 	headers := make(map[string]string)
 	headers["Cost-Dimensions"] = "cpu pmu"
-	headers["graph-root-id"] = rootNodeName
+	headers["graph-root-id"] = profile.biggestImpactEntryPoint()
 	headers["probed-os"] = osInfo.Name
 	headers["probed-language"] = "go"
 	headers["probed-runtime"] = runtime.Version()
@@ -262,7 +262,7 @@ func WriteBFFormat(profile *Profile, rootNodeName string, w io.Writer) error {
 		return err
 	}
 
-	entryPoint := profile.EntryPoints[rootNodeName]
+	entryPoint := profile.EntryPoints[headers["graph-root-id"]]
 	for name, edge := range entryPoint.Edges {
 		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v %v\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
 			return err
