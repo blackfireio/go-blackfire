@@ -248,14 +248,14 @@ func (p *probe) currentMemBuffer() *bytes.Buffer {
 
 func (p *probe) prepareAgentClient() (err error) {
 	if p.agentClient != nil {
-		return p.agentClient.NewSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientId, p.configuration.ClientToken)
+		return p.agentClient.NewSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientID, p.configuration.ClientToken)
 	}
 
 	if p.configuration.BlackfireQuery != "" {
 		p.agentClient, err = NewAgentClient(p.configuration.AgentSocket, p.configuration.BlackfireQuery)
 		p.configuration.BlackfireQuery = ""
 	} else {
-		p.agentClient, err = NewAgentClientWithSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientId, p.configuration.ClientToken)
+		p.agentClient, err = NewAgentClientWithSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientID, p.configuration.ClientToken)
 	}
 
 	return

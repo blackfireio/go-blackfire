@@ -37,7 +37,7 @@ type BlackfireConfiguration struct {
 	// via a signing request to Blackfire. You won't need to set this manually.
 	BlackfireQuery string
 	// Client ID to authenticate with the Blackfire API
-	ClientId string
+	ClientID string
 	// Client token to authenticate with the Blackfire API
 	ClientToken string
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
@@ -173,7 +173,7 @@ func (c *BlackfireConfiguration) configureFromEnv() {
 	}
 
 	if v := readEnvVar("BLACKFIRE_CLIENT_ID"); v != "" {
-		c.ClientId = v
+		c.ClientID = v
 	}
 
 	if v := readEnvVar("BLACKFIRE_CLIENT_TOKEN"); v != "" {
@@ -229,7 +229,7 @@ func (c *BlackfireConfiguration) configureFromIniFile(path string) {
 	section := iniConfig.Section("blackfire")
 
 	if section.HasKey("client-id") {
-		c.ClientId = getStringFromIniSection(section, "client-id")
+		c.ClientID = getStringFromIniSection(section, "client-id")
 	}
 
 	if section.HasKey("client-token") {
@@ -293,7 +293,7 @@ func (c *BlackfireConfiguration) validate() {
 	}
 
 	if c.BlackfireQuery == "" {
-		if c.ClientId == "" || c.ClientToken == "" {
+		if c.ClientID == "" || c.ClientToken == "" {
 			errors = append(errors, fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set"))
 		}
 	}
