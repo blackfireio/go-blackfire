@@ -25,29 +25,29 @@ type Edge struct {
 }
 
 func NewEdge(fromFunction string, toFunction string) *Edge {
-	this := new(Edge)
-	this.FromFunction = fromFunction
-	this.ToFunction = toFunction
-	return this
+	return &Edge{
+		FromFunction: fromFunction,
+		ToFunction:   toFunction,
+	}
 }
 
-func (this *Edge) AddCount(count int64) {
-	this.Count += count
+func (e *Edge) AddCount(count int64) {
+	e.Count += count
 }
 
-func (this *Edge) AddWalltimeValue(value int64) {
-	this.CumulativeWalltimeValue += value
+func (e *Edge) AddWalltimeValue(value int64) {
+	e.CumulativeWalltimeValue += value
 }
 
-func (this *Edge) AddMemValue(value int64) {
-	this.CumulativeMemValue += value
+func (e *Edge) AddMemValue(value int64) {
+	e.CumulativeMemValue += value
 }
 
-func (this *Edge) SetMinimumCount() {
+func (e *Edge) SetMinimumCount() {
 	// Because we are sampling, some of the functions in the stack won't have
 	// actually been sampled. We just set their counts to 1.
-	if this.Count == 0 {
-		this.Count = 1
+	if e.Count == 0 {
+		e.Count = 1
 	}
 }
 
@@ -61,16 +61,16 @@ type EntryPoint struct {
 }
 
 func NewEntryPoint(name string) *EntryPoint {
-	this := new(EntryPoint)
-	this.Name = name
-	this.Edges = make(map[string]*Edge)
-	return this
+	return &EntryPoint{
+		Name:  name,
+		Edges: make(map[string]*Edge),
+	}
 }
 
-func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
+func (ep *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
 	// EntryPoint's value mesures how much of the profile it encompasses
-	this.WTValue += wtValue
-	this.MemValue += memValue
+	ep.WTValue += wtValue
+	ep.MemValue += memValue
 
 	fromFunction := ""
 	var edge *Edge
@@ -86,10 +86,10 @@ func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValu
 	for _, toFunction := range stack {
 		edgeName := generateEdgeName(fromFunction, toFunction)
 		var ok bool
-		edge, ok = this.Edges[edgeName]
+		edge, ok = ep.Edges[edgeName]
 		if !ok {
 			edge = NewEdge(fromFunction, toFunction)
-			this.Edges[edgeName] = edge
+			ep.Edges[edgeName] = edge
 		}
 		edge.AddWalltimeValue(wtValue)
 		edge.AddMemValue(memValue)
@@ -100,8 +100,8 @@ func (this *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValu
 	edge.AddCount(count)
 }
 
-func (this *EntryPoint) SetMinimumCounts() {
-	for _, edge := range this.Edges {
+func (ep *EntryPoint) SetMinimumCounts() {
+	for _, edge := range ep.Edges {
 		edge.SetMinimumCount()
 	}
 }
@@ -113,41 +113,41 @@ type Profile struct {
 }
 
 func NewProfile() *Profile {
-	this := new(Profile)
-	this.EntryPoints = make(map[string]*EntryPoint)
-	return this
+	return &Profile{
+		EntryPoints: make(map[string]*EntryPoint),
+	}
 }
 
-func (this *Profile) HasData() bool {
-	return len(this.EntryPoints) > 0
+func (p *Profile) HasData() bool {
+	return len(p.EntryPoints) > 0
 }
 
-func (this *Profile) BiggestImpactEntryPoint() string {
-	if len(this.EntryPointsLargeToSmall) == 0 {
+func (p *Profile) BiggestImpactEntryPoint() string {
+	if len(p.EntryPointsLargeToSmall) == 0 {
 		panic(fmt.Errorf("No entry points found!"))
 	}
-	return this.EntryPointsLargeToSmall[0].Name
+	return p.EntryPointsLargeToSmall[0].Name
 }
 
-func (this *Profile) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
+func (p *Profile) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
 	entryPointName := stack[0]
-	entryPoint, ok := this.EntryPoints[entryPointName]
+	entryPoint, ok := p.EntryPoints[entryPointName]
 	if !ok {
 		entryPoint = NewEntryPoint(entryPointName)
-		this.EntryPoints[entryPointName] = entryPoint
+		p.EntryPoints[entryPointName] = entryPoint
 	}
 	entryPoint.AddStatisticalSample(stack, count, wtValue, memValue)
 }
 
-func (this *Profile) Finish() {
-	this.EntryPointsLargeToSmall = make([]*EntryPoint, 0, len(this.EntryPoints))
-	for _, entryPoint := range this.EntryPoints {
+func (p *Profile) Finish() {
+	p.EntryPointsLargeToSmall = make([]*EntryPoint, 0, len(p.EntryPoints))
+	for _, entryPoint := range p.EntryPoints {
 		entryPoint.SetMinimumCounts()
-		this.EntryPointsLargeToSmall = append(this.EntryPointsLargeToSmall, entryPoint)
+		p.EntryPointsLargeToSmall = append(p.EntryPointsLargeToSmall, entryPoint)
 	}
 
-	sort.Slice(this.EntryPointsLargeToSmall, func(i, j int) bool {
-		return this.EntryPointsLargeToSmall[i].WTValue > this.EntryPointsLargeToSmall[j].WTValue
+	sort.Slice(p.EntryPointsLargeToSmall, func(i, j int) bool {
+		return p.EntryPointsLargeToSmall[i].WTValue > p.EntryPointsLargeToSmall[j].WTValue
 	})
 }
 
