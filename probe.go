@@ -29,8 +29,8 @@ const (
 
 type probe struct {
 	allowProfiling        bool
-	configuration         BlackfireConfiguration
-	agentClient           *AgentClient
+	configuration         *BlackfireConfiguration
+	agentClient           *agentClient
 	mutex                 sync.Mutex
 	profileDisableTrigger chan bool
 	currentState          profilerState
@@ -41,8 +41,10 @@ type probe struct {
 }
 
 func newProbe() *probe {
-	p := new(probe)
-	p.allowProfiling = true
+	p := &probe{
+		allowProfiling: true,
+		configuration:  &BlackfireConfiguration{},
+	}
 
 	// Attempt a default configuration. Any errors encountered will be stored
 	// and listed whenever the user makes an API call. If the user calls
@@ -247,18 +249,14 @@ func (p *probe) currentMemBuffer() *bytes.Buffer {
 }
 
 func (p *probe) prepareAgentClient() (err error) {
-	if p.agentClient != nil {
-		return p.agentClient.NewSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientID, p.configuration.ClientToken)
+	if p.agentClient == nil {
+		p.agentClient, err = NewAgentClient(p.configuration)
+		if err != nil {
+			return err
+		}
 	}
 
-	if p.configuration.BlackfireQuery != "" {
-		p.agentClient, err = NewAgentClient(p.configuration.AgentSocket, p.configuration.BlackfireQuery)
-		p.configuration.BlackfireQuery = ""
-	} else {
-		p.agentClient, err = NewAgentClientWithSigningRequest(p.configuration.AgentSocket, p.configuration.HTTPEndpoint, p.configuration.ClientID, p.configuration.ClientToken)
-	}
-
-	return
+	return p.agentClient.StartNewRequest()
 }
 
 func (p *probe) canEnableProfiling() bool {

@@ -19,47 +19,46 @@ import (
 	"github.com/blackfireio/osinfo"
 )
 
-type AgentClient struct {
-	profileCount      int
-	agentNetwork      string
-	agentAddress      string
-	rawBlackfireQuery string
+type agentClient struct {
+	profileCount        int
+	agentNetwork        string
+	agentAddress        string
+	signingEndpoint     *url.URL
+	signingAuth         string
+	firstBlackfireQuery string
+	rawBlackfireQuery   string
 }
 
-func NewAgentClient(agentSocket, blackfireQuery string) (*AgentClient, error) {
-	c := new(AgentClient)
-	if err := c.Init(agentSocket, blackfireQuery); err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
-func NewAgentClientWithSigningRequest(agentSocket string, httpEndpoint *url.URL, clientID string, clientToken string) (*AgentClient, error) {
-	c := new(AgentClient)
-	if err := c.InitWithSigningRequest(agentSocket, httpEndpoint, clientID, clientToken); err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
-func (c *AgentClient) NewSigningRequest(agentSocket string, httpEndpoint *url.URL, clientID string, clientToken string) error {
-	c.profileCount = 0
-	return c.InitWithSigningRequest(agentSocket, httpEndpoint, clientID, clientToken)
-}
-
-func (c *AgentClient) Init(agentSocket, blackfireQuery string) (err error) {
-	c.agentNetwork, c.agentAddress, err = parseNetworkAddressString(agentSocket)
+func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error) {
+	agentNetwork, agentAddress, err := parseNetworkAddressString(configuration.AgentSocket)
 	if err != nil {
-		return
+		return nil, err
 	}
-	c.rawBlackfireQuery = blackfireQuery
-	return
+
+	signingEndpoint := configuration.HTTPEndpoint
+	signingEndpoint.Path = path.Join(signingEndpoint.Path, "/api/v1/signing")
+
+	return &agentClient{
+		agentNetwork:        agentNetwork,
+		agentAddress:        agentAddress,
+		signingEndpoint:     signingEndpoint,
+		signingAuth:         fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
+		firstBlackfireQuery: configuration.BlackfireQuery,
+	}, nil
 }
 
-func (c *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndpoint *url.URL, clientID string, clientToken string) (err error) {
-	var signingResponse map[string]interface{}
-	if signingResponse, err = sendSigningRequest(authHTTPEndpoint, clientID, clientToken); err != nil {
-		return
+func (c *agentClient) StartNewRequest() error {
+	c.profileCount = 0
+
+	if c.firstBlackfireQuery != "" {
+		c.rawBlackfireQuery = c.firstBlackfireQuery
+		c.firstBlackfireQuery = ""
+		return nil
+	}
+
+	signingResponse, err := c.sendSigningRequest()
+	if err != nil {
+		return err
 	}
 
 	blackfireQuery, ok := signingResponse["query_string"].(string)
@@ -69,14 +68,15 @@ func (c *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndpoin
 	if blackfireQuery == "" {
 		return fmt.Errorf("Signing response blackfire query was empty")
 	}
-	return c.Init(agentSocket, blackfireQuery)
+	c.rawBlackfireQuery = blackfireQuery
+	return nil
 }
 
-func (c *AgentClient) getGoVersion() string {
+func (c *agentClient) getGoVersion() string {
 	return fmt.Sprintf("go-%v", runtime.Version()[2:])
 }
 
-func (c *AgentClient) getBlackfireQueryHeader() string {
+func (c *agentClient) getBlackfireQueryHeader() string {
 	builder := strings.Builder{}
 	builder.WriteString(c.rawBlackfireQuery)
 	if c.profileCount > 0 {
@@ -86,7 +86,7 @@ func (c *AgentClient) getBlackfireQueryHeader() string {
 	return builder.String()
 }
 
-func (c *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
+func (c *agentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	builder := strings.Builder{}
 	builder.WriteString(c.getGoVersion())
 	if hasBlackfireYaml {
@@ -95,7 +95,7 @@ func (c *AgentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	return builder.String()
 }
 
-func (c *AgentClient) loadBlackfireYaml() (data []byte, err error) {
+func (c *agentClient) loadBlackfireYaml() (data []byte, err error) {
 	filenames := []string{".blackfire.yml", ".blackfire.yaml"}
 
 	var filename string
@@ -115,7 +115,7 @@ func (c *AgentClient) loadBlackfireYaml() (data []byte, err error) {
 	return
 }
 
-func (c *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
+func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) (err error) {
 	if err = conn.WriteStringHeader("Blackfire-Yaml-Size", strconv.Itoa(len(contents))); err != nil {
 		return
 	}
@@ -125,7 +125,7 @@ func (c *AgentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 	return
 }
 
-func (c *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
+func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
 	if len(c.rawBlackfireQuery) == 0 {
 		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
@@ -193,7 +193,7 @@ func (c *AgentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	return
 }
 
-func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
+func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	var conn *agentConnection
 	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress); err != nil {
 		return
@@ -229,30 +229,15 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 	return
 }
 
-func getAgentSigningURL(endpoint *url.URL) *url.URL {
-	const signingPath = "/api/v1/signing"
-	u := new(url.URL)
-	*u = *endpoint
-	u.Path = path.Join(u.Path, signingPath)
-	return u
-}
-
-func getSigningAuthorization(clientID, clientToken string) string {
-	idToken := clientID + ":" + clientToken
-	return fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(idToken)))
-}
-
-func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (signingResponse map[string]interface{}, err error) {
-	signingURL := getAgentSigningURL(baseURL)
-	signingAuth := getSigningAuthorization(clientID, clientToken)
+func (c *agentClient) sendSigningRequest() (signingResponse map[string]interface{}, err error) {
 	var request *http.Request
 	var response *http.Response
-	Log.Debug().Msgf("Blackfire: Get authorization from %v", signingURL)
-	request, err = http.NewRequest("POST", signingURL.String(), nil)
+	Log.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
+	request, err = http.NewRequest("POST", c.signingEndpoint.String(), nil)
 	if err != nil {
 		return
 	}
-	request.Header.Add("Authorization", signingAuth)
+	request.Header.Add("Authorization", c.signingAuth)
 	Log.Debug().Msg("Blackfire: Send signing request")
 	client := http.DefaultClient
 	response, err = client.Do(request)
@@ -260,7 +245,7 @@ func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (
 		return
 	}
 	if response.StatusCode != 201 {
-		err = fmt.Errorf("Signing request to %v failed: %v", signingURL, response.Status)
+		err = fmt.Errorf("Signing request to %s failed: %v", c.signingEndpoint, response.Status)
 		return
 	}
 	var responseData []byte
