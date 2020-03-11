@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	pprof "github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
@@ -110,6 +111,7 @@ func (ep *EntryPoint) SetMinimumCounts() {
 type Profile struct {
 	EntryPoints             map[string]*EntryPoint
 	EntryPointsLargeToSmall []*EntryPoint
+	CpuSampleRate           int
 }
 
 func NewProfile() *Profile {
@@ -243,6 +245,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	headers["probed-os"] = osInfo.Name
 	headers["probed-language"] = "go"
 	headers["probed-runtime"] = runtime.Version()
+	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
 	// headers["Profile-Title"] = profileTitle
 	headers["Context"] = generateContextString()
 
