@@ -19,66 +19,6 @@ import (
 	"github.com/blackfireio/osinfo"
 )
 
-func getAgentSigningURL(endpoint *url.URL) *url.URL {
-	const signingPath = "/api/v1/signing"
-	u := new(url.URL)
-	*u = *endpoint
-	u.Path = path.Join(u.Path, signingPath)
-	return u
-}
-
-func getSigningAuthorization(clientID, clientToken string) string {
-	idToken := clientID + ":" + clientToken
-	return fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(idToken)))
-}
-
-func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (signingResponse map[string]interface{}, err error) {
-	signingURL := getAgentSigningURL(baseURL)
-	signingAuth := getSigningAuthorization(clientID, clientToken)
-	var request *http.Request
-	var response *http.Response
-	Log.Debug().Msgf("Blackfire: Get authorization from %v", signingURL)
-	request, err = http.NewRequest("POST", signingURL.String(), nil)
-	if err != nil {
-		return
-	}
-	request.Header.Add("Authorization", signingAuth)
-	Log.Debug().Msg("Blackfire: Send signing request")
-	client := http.DefaultClient
-	response, err = client.Do(request)
-	if err != nil {
-		return
-	}
-	if response.StatusCode != 201 {
-		err = fmt.Errorf("Signing request to %v failed: %v", signingURL, response.Status)
-		return
-	}
-	var responseData []byte
-	responseData, err = ioutil.ReadAll(response.Body)
-	if err != nil {
-		return
-	}
-	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
-	err = json.Unmarshal(responseData, &signingResponse)
-	if err != nil {
-		err = fmt.Errorf("JSON error: %v", err)
-		return
-	}
-	return
-}
-
-func parseNetworkAddressString(agentSocket string) (network string, address string, err error) {
-	re := regexp.MustCompile(`^([^:]+)://(.*)`)
-	matches := re.FindAllStringSubmatch(agentSocket, -1)
-	if matches == nil {
-		err = fmt.Errorf("Could not parse agent socket value: [%v]", agentSocket)
-		return
-	}
-	network = matches[0][1]
-	address = matches[0][2]
-	return
-}
-
 type AgentClient struct {
 	profileCount      int
 	agentNetwork      string
@@ -130,28 +70,6 @@ func (c *AgentClient) InitWithSigningRequest(agentSocket string, authHTTPEndpoin
 		return fmt.Errorf("Signing response blackfire query was empty")
 	}
 	return c.Init(agentSocket, blackfireQuery)
-}
-
-func getProfileOSHeaderValue() (values url.Values, err error) {
-	var info *osinfo.OSInfo
-	info, err = osinfo.GetOSInfo()
-	if err != nil {
-		return
-	}
-
-	values = make(url.Values)
-	values["family"] = []string{info.Family}
-	values["arch"] = []string{info.Architecture}
-	values["id"] = []string{info.ID}
-	values["version"] = []string{info.Version}
-	if len(info.Codename) > 0 {
-		values["codename"] = []string{info.Codename}
-	}
-	if len(info.Build) > 0 {
-		values["build"] = []string{info.Build}
-	}
-
-	return values, nil
 }
 
 func (c *AgentClient) getGoVersion() string {
@@ -309,4 +227,86 @@ func (c *AgentClient) SendProfile(encodedProfile []byte) (err error) {
 	}
 
 	return
+}
+
+func getAgentSigningURL(endpoint *url.URL) *url.URL {
+	const signingPath = "/api/v1/signing"
+	u := new(url.URL)
+	*u = *endpoint
+	u.Path = path.Join(u.Path, signingPath)
+	return u
+}
+
+func getSigningAuthorization(clientID, clientToken string) string {
+	idToken := clientID + ":" + clientToken
+	return fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(idToken)))
+}
+
+func sendSigningRequest(baseURL *url.URL, clientID string, clientToken string) (signingResponse map[string]interface{}, err error) {
+	signingURL := getAgentSigningURL(baseURL)
+	signingAuth := getSigningAuthorization(clientID, clientToken)
+	var request *http.Request
+	var response *http.Response
+	Log.Debug().Msgf("Blackfire: Get authorization from %v", signingURL)
+	request, err = http.NewRequest("POST", signingURL.String(), nil)
+	if err != nil {
+		return
+	}
+	request.Header.Add("Authorization", signingAuth)
+	Log.Debug().Msg("Blackfire: Send signing request")
+	client := http.DefaultClient
+	response, err = client.Do(request)
+	if err != nil {
+		return
+	}
+	if response.StatusCode != 201 {
+		err = fmt.Errorf("Signing request to %v failed: %v", signingURL, response.Status)
+		return
+	}
+	var responseData []byte
+	responseData, err = ioutil.ReadAll(response.Body)
+	if err != nil {
+		return
+	}
+	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
+	err = json.Unmarshal(responseData, &signingResponse)
+	if err != nil {
+		err = fmt.Errorf("JSON error: %v", err)
+		return
+	}
+	return
+}
+
+func parseNetworkAddressString(agentSocket string) (network string, address string, err error) {
+	re := regexp.MustCompile(`^([^:]+)://(.*)`)
+	matches := re.FindAllStringSubmatch(agentSocket, -1)
+	if matches == nil {
+		err = fmt.Errorf("Could not parse agent socket value: [%v]", agentSocket)
+		return
+	}
+	network = matches[0][1]
+	address = matches[0][2]
+	return
+}
+
+func getProfileOSHeaderValue() (values url.Values, err error) {
+	var info *osinfo.OSInfo
+	info, err = osinfo.GetOSInfo()
+	if err != nil {
+		return
+	}
+
+	values = make(url.Values)
+	values["family"] = []string{info.Family}
+	values["arch"] = []string{info.Architecture}
+	values["id"] = []string{info.ID}
+	values["version"] = []string{info.Version}
+	if len(info.Codename) > 0 {
+		values["codename"] = []string{info.Codename}
+	}
+	if len(info.Build) > 0 {
+		values["build"] = []string{info.Build}
+	}
+
+	return values, nil
 }
