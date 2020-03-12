@@ -1,0 +1,66 @@
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  background-color: #DDDDDD;
+}
+
+#root {
+  margin: 0 auto;
+  width: 800px;
+  display: flex;
+  flex-direction: column;
+  background-color: #e5e5e5;
+  min-height: 100vh;
+}
+
+a {
+  color: #2da1bf;
+  text-decoration: none;
+}
+
+.App-header {
+  background-color: #323232;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.wrapper {
+  width: 500px;
+  margin: 0 auto;
+  position: relative;
+  padding: 20px 0;
+  line-height: 35px;
+  flex: 1;
+}
+
+.App-footer {
+  bottom: 0;
+  width: 100%;
+  background-color: #F5F5F5;
+}
+
+.App-footer a {
+  color: #e03c31;
+}
+
+.error {
+  border: 1px solid #e03c31;
+  border-radius: 5px;
+  margin: 15px 0;
+  padding: 5px 10px;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+pre {
+  line-height: 1em;
+  min-height: 100px;
+  max-height: 500px;
+  overflow: scroll;
+}
