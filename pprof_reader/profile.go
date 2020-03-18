@@ -165,6 +165,7 @@ func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile
 		// A location has one or more lines (>1 if functions are inlined).
 		// Each line points to a function.
 		stack := make([]string, 0, 10)
+		stack = append(stack, "go")
 		for i := len(sample.Location) - 1; i >= 0; i-- {
 			location := sample.Location[i]
 			for j := len(location.Line) - 1; j >= 0; j-- {
