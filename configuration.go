@@ -54,6 +54,9 @@ type BlackfireConfiguration struct {
 	// exceed the abilities of most environments.
 	// See https://golang.org/src/runtime/pprof/pprof.go#L727
 	DefaultCPUSampleRateHz int
+	// If true, dump the original pprof profiles to the current directory whenever
+	// a profile ends.
+	ShouldDumpProfiles bool
 }
 
 func (c *BlackfireConfiguration) setEndpoint(endpoint string) error {
@@ -184,6 +187,10 @@ func (c *BlackfireConfiguration) configureFromEnv() {
 		if err := c.setEndpoint(v); err != nil {
 			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %v: %v", v, err)
 		}
+	}
+
+	if v := readEnvVar("BLACKFIRE_DUMP_PPROF"); v == "true" {
+		c.ShouldDumpProfiles = true
 	}
 
 	setLogFile(c.LogFile)

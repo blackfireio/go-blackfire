@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"runtime"
@@ -216,6 +217,22 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 
 	profile := convertPProfsToInternal(cpuProfiles, memProfiles)
 	return profile, nil
+}
+
+func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer) (err error) {
+	for i, buff := range cpuBuffers {
+		filename := fmt.Sprintf("cpu-%v.pprof", i+1)
+		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
+			return
+		}
+	}
+	for i, buff := range memBuffers {
+		filename := fmt.Sprintf("mem-%v.pprof", i+1)
+		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
+			return
+		}
+	}
+	return
 }
 
 func generateContextString() string {

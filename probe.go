@@ -366,6 +366,11 @@ func (p *probe) endProfile() error {
 		p.currentState = profilerStateOff
 	}()
 
+	if p.configuration.ShouldDumpProfiles {
+		Log.Debug().Msgf("Dumping pprof profiles to current dir")
+		pprof_reader.DumpProfiles(p.cpuProfileBuffers, p.memProfileBuffers)
+	}
+
 	profile, err := pprof_reader.ReadFromPProf(p.cpuProfileBuffers, p.memProfileBuffers)
 	if err != nil {
 		return err
