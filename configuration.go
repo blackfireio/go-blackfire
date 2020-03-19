@@ -83,7 +83,7 @@ func (c *BlackfireConfiguration) getDefaultIniPath() string {
 		return filePath
 	}
 
-	if iniPath := getIniPath(os.Getenv("BLACKFIRE_HOME")); iniPath != "" {
+	if iniPath := getIniPath(readEnvVar("BLACKFIRE_HOME")); iniPath != "" {
 		return iniPath
 	}
 
