@@ -235,16 +235,21 @@ func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer) (err error) {
 	return
 }
 
-func generateContextString() string {
+func generateContextStringFromSlice(args []string) string {
 	s := strings.Builder{}
-	s.WriteString("script=")
-	s.WriteString(url.QueryEscape(os.Args[0]))
+	s.WriteString(url.QueryEscape("argv[0]="))
+	s.WriteString(url.QueryEscape(args[0]))
 	for i := 1; i < len(os.Args); i++ {
 		argv := url.QueryEscape(fmt.Sprintf("argv[%d]", i))
-		value := url.QueryEscape(os.Args[i])
+		value := url.QueryEscape(args[i])
 		s.WriteString(fmt.Sprintf("&%s=%s", argv, value))
 	}
+
 	return s.String()
+}
+
+func generateContextString() string {
+	return generateContextStringFromSlice(os.Args)
 }
 
 // Write a parsed profile out as a Blackfire profile.
