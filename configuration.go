@@ -243,10 +243,6 @@ func (c *BlackfireConfiguration) configureFromIniFile(path string) {
 		c.ClientToken = getStringFromIniSection(section, "client-token")
 	}
 
-	if section.HasKey("agent_socket") {
-		c.AgentSocket = getStringFromIniSection(section, "agent_socket")
-	}
-
 	if section.HasKey("endpoint") {
 		endpoint := getStringFromIniSection(section, "endpoint")
 		if err := c.setEndpoint(endpoint); err != nil {
