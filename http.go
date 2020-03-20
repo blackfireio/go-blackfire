@@ -23,36 +23,36 @@ func EnableHandler(w http.ResponseWriter, r *http.Request) {
 	durationInSeconds, durationWasSpecified, err := parseFloat(r, "duration")
 
 	if err != nil {
-		Log.Error().Msgf("Blackfire (HTTP): %v\n", err)
+		Log.Error().Msgf("Blackfire (HTTP): %v", err)
 		w.WriteHeader(400)
 		return
 	}
 
 	if durationWasSpecified {
 		duration := time.Duration(durationInSeconds * float64(time.Second))
-		Log.Info().Msgf("Blackfire (HTTP): Profiling for %v seconds\n", float64(duration)/1000000000)
+		Log.Info().Msgf("Blackfire (HTTP): Profiling for %f seconds", float64(duration)/1000000000)
 		if err := globalProbe.ProfileWithCallback(duration, func() {
-			Log.Info().Msgf("Blackfire (HTTP): Profile complete\n")
+			Log.Info().Msgf("Blackfire (HTTP): Profile complete")
 		}); err != nil {
-			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v", err)
 		}
 	} else {
-		Log.Info().Msgf("Blackfire (HTTP): Enable profiling\n")
+		Log.Info().Msgf("Blackfire (HTTP): Enable profiling")
 		if err := globalProbe.Enable(); err != nil {
-			Log.Error().Msgf("Blackfire (HTTP) (enable): %v\n", err)
+			Log.Error().Msgf("Blackfire (HTTP) (enable): %v", err)
 		}
 	}
 }
 
 // DisableHandler stops profiling via HTTP
 func DisableHandler(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): Disable profiling\n")
+	Log.Info().Msgf("Blackfire (HTTP): Disable profiling")
 	globalProbe.Disable()
 }
 
 // EndHandler stops profiling via HTTP and send the profile to the agent
 func EndHandler(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): End profiling\n")
+	Log.Info().Msgf("Blackfire (HTTP): End profiling")
 	globalProbe.End()
 }
 

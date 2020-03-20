@@ -403,7 +403,7 @@ func (p *probe) triggerStopProfiler(shouldEndProfile bool) {
 }
 
 func (p *probe) onProfileDisableTriggered(shouldEndProfile bool, callback func()) {
-	Log.Debug().Msgf("Blackfire: Received profile disable trigger. shouldEndProfile = %v, callback = %p", shouldEndProfile, callback)
+	Log.Debug().Msgf("Blackfire: Received profile disable trigger. shouldEndProfile = %t, callback = %p", shouldEndProfile, callback)
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 

@@ -76,7 +76,7 @@ func (c *BlackfireConfiguration) getDefaultIniPath() string {
 		fileName := ".blackfire.ini"
 		filePath := path.Join(path.Clean(dir), fileName)
 		_, err := os.Stat(filePath)
-		Log.Debug().Msgf("Blackfire: Does configuration file exist at %v: %v", filePath, err == nil)
+		Log.Debug().Msgf("Blackfire: Does configuration file exist at %s: %t", filePath, err == nil)
 		if err != nil {
 			return ""
 		}
@@ -136,7 +136,7 @@ func (c *BlackfireConfiguration) configureFromDefaults() {
 
 func readEnvVar(name string) string {
 	if v := os.Getenv(name); v != "" {
-		Log.Debug().Msgf("Blackfire: Read ENV var %v: %v", name, v)
+		Log.Debug().Msgf("Blackfire: Read ENV var %s: %s", name, v)
 		return v
 	}
 	return ""
@@ -146,7 +146,7 @@ func (c *BlackfireConfiguration) readLoggingFromEnv() {
 	if v := readEnvVar("BLACKFIRE_LOG_LEVEL"); v != "" {
 		level, err := strconv.Atoi(v)
 		if err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_LOG_LEVEL %v: %v", v, err)
+			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_LOG_LEVEL %s: %v", v, err)
 		} else {
 			c.LogLevel = level
 		}
@@ -185,7 +185,7 @@ func (c *BlackfireConfiguration) configureFromEnv() {
 
 	if v := readEnvVar("BLACKFIRE_ENDPOINT"); v != "" {
 		if err := c.setEndpoint(v); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %v: %v", v, err)
+			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %s: %v", v, err)
 		}
 	}
 
@@ -202,7 +202,7 @@ func (c *BlackfireConfiguration) parseSeconds(value string) (time.Duration, erro
 	found := re.FindStringSubmatch(value)
 
 	if len(found) == 0 {
-		return 0, fmt.Errorf("%v: No seconds value found", value)
+		return 0, fmt.Errorf("%s: No seconds value found", value)
 	}
 
 	seconds, err := strconv.ParseFloat(found[1], 64)
@@ -214,7 +214,7 @@ func (c *BlackfireConfiguration) parseSeconds(value string) (time.Duration, erro
 
 func getStringFromIniSection(section *ini.Section, key string) string {
 	if v := section.Key(key).String(); v != "" {
-		Log.Debug().Msgf("Blackfire: Read INI key %v: %v", key, v)
+		Log.Debug().Msgf("Blackfire: Read INI key %s: %s", key, v)
 		return v
 	}
 	return ""
@@ -229,7 +229,7 @@ func (c *BlackfireConfiguration) configureFromIniFile(path string) {
 
 	iniConfig, err := ini.Load(path)
 	if err != nil {
-		Log.Error().Msgf("Blackfire: Could not load Blackfire config file %v: %v", path, err)
+		Log.Error().Msgf("Blackfire: Could not load Blackfire config file %s: %v", path, err)
 		return
 	}
 
@@ -250,7 +250,7 @@ func (c *BlackfireConfiguration) configureFromIniFile(path string) {
 	if section.HasKey("endpoint") {
 		endpoint := getStringFromIniSection(section, "endpoint")
 		if err := c.setEndpoint(endpoint); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from ini file %v, endpoint %v: %v", path, endpoint, err)
+			Log.Error().Msgf("Blackfire: Unable to set from ini file %s, endpoint %s: %v", path, endpoint, err)
 		}
 	}
 
@@ -258,7 +258,7 @@ func (c *BlackfireConfiguration) configureFromIniFile(path string) {
 		timeout := getStringFromIniSection(section, "timeout")
 		var err error
 		if c.AgentTimeout, err = c.parseSeconds(timeout); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from ini file %v, timeout %v: %v", path, timeout, err)
+			Log.Error().Msgf("Blackfire: Unable to set from ini file %s, timeout %s: %v", path, timeout, err)
 		}
 	}
 
@@ -278,7 +278,7 @@ func (c *BlackfireConfiguration) configureFromConfiguration(srcConfig *Blackfire
 		sField := sv.Field(i)
 		dField := dv.Field(i)
 		if !valueIsZero(sField) {
-			Log.Debug().Msgf("Blackfire: Set %v manually to %v", sField.Type().Name(), sField)
+			Log.Debug().Msgf("Blackfire: Set %s manually to %s", sField.Type().Name(), sField)
 			dField.Set(sField)
 		}
 	}
@@ -311,7 +311,7 @@ func (c *BlackfireConfiguration) validate() {
 
 	if c.LogFile != "" && c.LogFile != "stdout" && c.LogFile != "stderr" {
 		if _, err := os.Stat(c.LogFile); err != nil {
-			errors = append(errors, fmt.Errorf("Log file %v not found", c.LogFile))
+			errors = append(errors, fmt.Errorf("Log file %s not found", c.LogFile))
 		}
 	}
 
@@ -337,7 +337,7 @@ func (c *BlackfireConfiguration) configure(manualConfig *BlackfireConfiguration,
 	// This allows us to debug ini file loading issues.
 	c.configureLoggingFromEnv()
 
-	Log.Debug().Msgf("Blackfire: Read configuration from INI file %v", iniFilePath)
+	Log.Debug().Msgf("Blackfire: Read configuration from INI file %s", iniFilePath)
 	c.configureFromIniFile(iniFilePath)
 	Log.Debug().Msgf("Blackfire: Read configuration from ENV")
 	c.configureFromEnv()

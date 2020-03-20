@@ -50,7 +50,7 @@ func setLogFileInternal(filePath string) (err error) {
 	} else {
 		writer, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0664)
 		if err != nil {
-			Log.Error().Msgf("Could not open log file at %v: %v", filePath, err)
+			Log.Error().Msgf("Could not open log file at %s: %v", filePath, err)
 			return
 		}
 	}
@@ -63,11 +63,11 @@ func setLogFileInternal(filePath string) (err error) {
 // times in the configuration code.
 
 func setLogLevel(level int) error {
-	Log.Debug().Msgf("Blackfire: Change log level to %v", level)
+	Log.Debug().Msgf("Blackfire: Change log level to %d", level)
 	if currentLogLevel != level {
 		_, ok := logLevelMappings[level]
 		if !ok {
-			return fmt.Errorf("Blackfire: %v: Invalid log level (must be 1-4)", level)
+			return fmt.Errorf("Blackfire: %d: Invalid log level (must be 1-4)", level)
 		}
 		setLogLevelInternal(level)
 	}
@@ -75,7 +75,7 @@ func setLogLevel(level int) error {
 }
 
 func setLogFile(filePath string) (err error) {
-	Log.Debug().Msgf("Blackfire: Change log file to %v", filePath)
+	Log.Debug().Msgf("Blackfire: Change log file to %s", filePath)
 	if currentLogPath != filePath {
 		return setLogFileInternal(filePath)
 	}
