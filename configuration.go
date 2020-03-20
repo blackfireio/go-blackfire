@@ -117,9 +117,7 @@ func (c *BlackfireConfiguration) configureFromDefaults() {
 		c.AgentSocket = "tcp://127.0.0.1:8307"
 	case "darwin":
 		c.AgentSocket = "unix:///usr/local/var/run/blackfire-agent.sock"
-	case "linux":
-		c.AgentSocket = "unix:///var/run/blackfire/agent.sock"
-	case "freebsd":
+	default:
 		c.AgentSocket = "unix:///var/run/blackfire/agent.sock"
 	}
 
