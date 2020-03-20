@@ -16,14 +16,14 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%v] triggers profiling for %v seconds\n", sig, float64(duration)/1000000000)
+	Log.Info().Msgf("Blackfire (signal): Signal [%s] triggers profiling for %.0f seconds", sig, float64(duration)/1000000000)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%v): Profiling for %v seconds\n", sig, float64(duration)/1000000000)
+		Log.Info().Msgf("Blackfire (%s): Profiling for %.0f seconds", sig, float64(duration)/1000000000)
 		if err := globalProbe.ProfileWithCallback(duration, func() {
-			Log.Info().Msgf("Blackfire (%v): Profile complete\n", sig)
+			Log.Info().Msgf("Blackfire (%s): Profile complete", sig)
 		}); err != nil {
-			Log.Error().Msgf("Blackfire (EnableOnSignal): %v\n", err)
+			Log.Error().Msgf("Blackfire (EnableOnSignal): %v", err)
 		}
 	})
 
@@ -39,12 +39,12 @@ func DisableOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%v] stops profiling\n", sig)
+	Log.Info().Msgf("Blackfire (signal): Signal [%s] stops profiling", sig)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%v): Disable profiling\n", sig)
+		Log.Info().Msgf("Blackfire (%s): Disable profiling", sig)
 		if err := globalProbe.Disable(); err != nil {
-			Log.Error().Msgf("Blackfire (DisableOnSignal): %v\n", err)
+			Log.Error().Msgf("Blackfire (DisableOnSignal): %v", err)
 		}
 	})
 	return
@@ -60,12 +60,12 @@ func EndOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%v] ends the current profile\n", sig)
+	Log.Info().Msgf("Blackfire (signal): Signal [%s] ends the current profile", sig)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%v): End profile\n", sig)
+		Log.Info().Msgf("Blackfire (%s): End profile", sig)
 		if err := globalProbe.End(); err != nil {
-			Log.Error().Msgf("Blackfire (EndOnSignal): %v\n", err)
+			Log.Error().Msgf("Blackfire (EndOnSignal): %v", err)
 		}
 	})
 	return

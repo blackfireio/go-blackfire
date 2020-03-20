@@ -43,7 +43,7 @@ func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue stri
 	Log.Debug().Str("read header", line).Msgf("Recv header")
 	matches := headerRegex.FindAllStringSubmatch(line, -1)
 	if matches == nil {
-		err = fmt.Errorf("Could not parse header: [%v]", line)
+		err = fmt.Errorf("Could not parse header: [%s]", line)
 		return
 	}
 	name = matches[0][1]
@@ -71,7 +71,7 @@ func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
 }
 
 func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
-	line := fmt.Sprintf("%v: %v\n", name, urlEncodedValue)
+	line := fmt.Sprintf("%s: %s\n", name, urlEncodedValue)
 	Log.Debug().Str("write header", line).Msgf("Send header")
 	_, err := c.writer.WriteString(line)
 	return err

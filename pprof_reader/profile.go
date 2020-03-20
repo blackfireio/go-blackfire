@@ -79,7 +79,7 @@ func (ep *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue 
 
 	generateEdgeName := func(fromFunction string, toFunction string) string {
 		if fromFunction != "" {
-			return fmt.Sprintf("%v==>%v", fromFunction, toFunction)
+			return fmt.Sprintf("%s==>%s", fromFunction, toFunction)
 		}
 		return toFunction
 	}
@@ -221,13 +221,13 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 
 func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer) (err error) {
 	for i, buff := range cpuBuffers {
-		filename := fmt.Sprintf("cpu-%v.pprof", i+1)
+		filename := fmt.Sprintf("cpu-%d.pprof", i+1)
 		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
 			return
 		}
 	}
 	for i, buff := range memBuffers {
-		filename := fmt.Sprintf("mem-%v.pprof", i+1)
+		filename := fmt.Sprintf("mem-%d.pprof", i+1)
 		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
 			return
 		}
@@ -240,9 +240,9 @@ func generateContextString() string {
 	s.WriteString("script=")
 	s.WriteString(url.QueryEscape(os.Args[0]))
 	for i := 1; i < len(os.Args); i++ {
-		argv := url.QueryEscape(fmt.Sprintf("argv[%v]", i))
+		argv := url.QueryEscape(fmt.Sprintf("argv[%d]", i))
 		value := url.QueryEscape(os.Args[i])
-		s.WriteString(fmt.Sprintf("&%v=%v", argv, value))
+		s.WriteString(fmt.Sprintf("&%s=%s", argv, value))
 	}
 	return s.String()
 }
@@ -255,7 +255,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	}
 
 	// TODO: Profile title should be user-generated somehow
-	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%v"}}`, os.Args[0])
+	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
 
 	headers := make(map[string]string)
 	headers["Cost-Dimensions"] = "cpu pmu"
@@ -274,7 +274,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	}
 
 	for k, v := range headers {
-		if _, err := bufW.WriteString(fmt.Sprintf("%v: %v\n", k, v)); err != nil {
+		if _, err := bufW.WriteString(fmt.Sprintf("%s: %s\n", k, v)); err != nil {
 			return err
 		}
 	}
@@ -285,7 +285,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 
 	entryPoint := profile.EntryPoints[headers["graph-root-id"]]
 	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%v//%v %v %v\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
+		if _, err := bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
 			return err
 		}
 

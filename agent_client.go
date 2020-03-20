@@ -50,7 +50,7 @@ func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error)
 		agentNetwork:        agentNetwork,
 		agentAddress:        agentAddress,
 		signingEndpoint:     signingEndpoint,
-		signingAuth:         fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
+		signingAuth:         fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
 		firstBlackfireQuery: configuration.BlackfireQuery,
 		links:               make([]linksMap, 10),
 	}, nil
@@ -80,7 +80,7 @@ func (c *agentClient) LastProfileURLs() []string {
 }
 
 func (c *agentClient) getGoVersion() string {
-	return fmt.Sprintf("go-%v", runtime.Version()[2:])
+	return fmt.Sprintf("go-%s", runtime.Version()[2:])
 }
 
 func (c *agentClient) getBlackfireQueryHeader() string {
@@ -108,10 +108,10 @@ func (c *agentClient) loadBlackfireYaml() (data []byte, err error) {
 	var filename string
 	for _, filename = range filenames {
 		if data, err = ioutil.ReadFile(filename); err == nil {
-			Log.Debug().Msgf("Loaded %v", filename)
+			Log.Debug().Msgf("Loaded %s", filename)
 			break
 		} else if os.IsNotExist(err) {
-			Log.Debug().Msgf("%v does not exist", filename)
+			Log.Debug().Msgf("%s does not exist", filename)
 		} else {
 			return nil, err
 		}
@@ -127,7 +127,7 @@ func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 		return
 	}
 
-	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %v", len(contents))
+	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %d", len(contents))
 	err = conn.WriteRawData(contents)
 	return
 }
@@ -152,8 +152,8 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// These must be done separately from the rest of the headers because they
 	// either must be sent in a specific order, or use nonstandard encoding.
 	orderedHeaders := []string{
-		fmt.Sprintf("Blackfire-Query: %v", c.getBlackfireQueryHeader()),
-		fmt.Sprintf("Blackfire-Probe: %v", c.getBlackfireProbeHeader(hasBlackfireYaml)),
+		fmt.Sprintf("Blackfire-Query: %s", c.getBlackfireQueryHeader()),
+		fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
 
 	unorderedHeaders := make(map[string]interface{})
@@ -189,7 +189,7 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 		case "Blackfire-Error":
 			return fmt.Errorf(strings.TrimSpace(responseValue))
 		default:
-			return fmt.Errorf("Unexpected agent response: %v", responseValue)
+			return fmt.Errorf("Unexpected agent response: %s", responseValue)
 		}
 	}
 
@@ -208,7 +208,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	defer func() {
 		if err == nil {
 			c.profileCount++
-			Log.Debug().Msgf("Profile %v sent", c.profileCount)
+			Log.Debug().Msgf("Profile %d sent", c.profileCount)
 			err = conn.Close()
 		} else {
 			// We want the error that occurred earlier, not an error from close.
@@ -225,7 +225,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 		return err
 	}
 	if errResp, ok := response["Blackfire-Error"]; ok {
-		return fmt.Errorf("Blackfire-Error: %v", errResp)
+		return fmt.Errorf("Blackfire-Error: %s", errResp)
 	}
 
 	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
@@ -252,7 +252,7 @@ func (c *agentClient) createRequest() (err error) {
 		return
 	}
 	if response.StatusCode != 201 {
-		err = fmt.Errorf("Signing request to %s failed: %v", c.signingEndpoint, response.Status)
+		err = fmt.Errorf("Signing request to %s failed: %s", c.signingEndpoint, response.Status)
 		return
 	}
 	var responseData []byte
