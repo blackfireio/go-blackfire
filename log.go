@@ -11,12 +11,6 @@ import (
 
 var Log zerolog.Logger
 
-var currentLogLevel int
-var currentLogPath string
-
-const defaultLogLevel = 3
-const defaultLogfile = ""
-
 var logLevelMappings = map[int]zerolog.Level{
 	1: zerolog.ErrorLevel,
 	2: zerolog.WarnLevel,
@@ -25,11 +19,11 @@ var logLevelMappings = map[int]zerolog.Level{
 }
 
 func init() {
-	setLogFileInternal(defaultLogfile)
-	setLogLevelInternal(defaultLogLevel)
+	setLogFile("stderr")
+	setLogLevel(1)
 }
 
-func setLogLevelInternal(level int) {
+func setLogLevel(level int) {
 	if level < 1 {
 		level = 1
 	}
@@ -38,46 +32,21 @@ func setLogLevelInternal(level int) {
 	}
 
 	Log = Log.Level(logLevelMappings[level])
-	currentLogLevel = level
 }
 
-func setLogFileInternal(filePath string) (err error) {
+func setLogFile(filePath string) error {
 	var writer io.Writer
 	if filePath == "" || strings.EqualFold(filePath, "stderr") {
 		writer = os.Stderr
 	} else if strings.EqualFold(filePath, "stdout") {
 		writer = os.Stdout
 	} else {
+		var err error
 		writer, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0664)
 		if err != nil {
-			Log.Error().Msgf("Could not open log file at %s: %v", filePath, err)
-			return
+			return fmt.Errorf("could not open log file at %s: %v", filePath, err)
 		}
 	}
 	Log = Log.Output(writer)
-	currentLogPath = filePath
-	return
-}
-
-// Note: Log config functions must be idempotent because they get called many
-// times in the configuration code.
-
-func setLogLevel(level int) error {
-	Log.Debug().Msgf("Blackfire: Change log level to %d", level)
-	if currentLogLevel != level {
-		_, ok := logLevelMappings[level]
-		if !ok {
-			return fmt.Errorf("Blackfire: %d: Invalid log level (must be 1-4)", level)
-		}
-		setLogLevelInternal(level)
-	}
 	return nil
-}
-
-func setLogFile(filePath string) (err error) {
-	Log.Debug().Msgf("Blackfire: Change log file to %s", filePath)
-	if currentLogPath != filePath {
-		return setLogFileInternal(filePath)
-	}
-	return
 }

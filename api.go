@@ -21,10 +21,9 @@ var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently
 // * Environment variables
 // * Manual configuration
 //
-// manualConfig will be ignored if nil.
-// iniFilePath will be ignored if "".
-func Configure(manualConfig *BlackfireConfiguration, iniFilePath string) error {
-	return globalProbe.Configure(manualConfig, iniFilePath)
+// config will be ignored if nil.
+func Configure(config *BlackfireConfiguration) error {
+	return globalProbe.Configure(config)
 }
 
 // IsProfiling checks if the profiler is running. Only one profiler may run at a time.
@@ -68,13 +67,4 @@ func End() error {
 // to the agent.
 func EndAndWait() error {
 	return globalProbe.EndAndWait()
-}
-
-// ProfileOnDemandOnly completely disables the profiler unless the BLACKFIRE_QUERY
-// env variable is set. When the profiler is disabled, all API calls become no-ops.
-//
-// Only call this function before all other API calls. Calling it after another
-// API call in this module will lead to undefined behavior.
-func ProfileOnDemandOnly() {
-	globalProbe.ProfileOnDemandOnly()
 }

@@ -28,7 +28,6 @@ const (
 )
 
 type probe struct {
-	allowProfiling        bool
 	configuration         *BlackfireConfiguration
 	agentClient           *agentClient
 	mutex                 sync.Mutex
@@ -42,42 +41,31 @@ type probe struct {
 
 func newProbe() *probe {
 	p := &probe{
-		allowProfiling: true,
-		configuration:  &BlackfireConfiguration{},
+		configuration: &BlackfireConfiguration{},
 	}
-
-	// Attempt a default configuration. Any errors encountered will be stored
-	// and listed whenever the user makes an API call. If the user calls
-	// Configure(), the errors list will get replaced.
-	p.configuration.configure(nil, "")
-
 	p.startTriggerRearmLoop()
-
 	return p
 }
 
-func (p *probe) Configure(manualConfig *BlackfireConfiguration, iniFilePath string) (err error) {
-	if !p.allowProfiling {
-		return
-	}
+func (p *probe) Configure(config *BlackfireConfiguration) (err error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	p.configuration.configure(manualConfig, iniFilePath)
+	p.configuration = config
 	return
 }
 
 func (p *probe) IsProfiling() bool {
-	if !p.allowProfiling {
+	if !p.configuration.canProfile() {
 		return false
 	}
 	return p.currentState == profilerStateEnabled || p.currentState == profilerStateSending
 }
 
 func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (err error) {
-	if !p.allowProfiling {
+	if err = p.configuration.load(); err != nil {
 		return
 	}
-	if err = p.assertConfigurationIsValid(); err != nil {
+	if !p.configuration.canProfile() {
 		return
 	}
 
@@ -102,7 +90,7 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 		return
 	}
 
-	if duration > p.configuration.MaxProfileDuration {
+	if duration == 0 || duration > p.configuration.MaxProfileDuration {
 		duration = p.configuration.MaxProfileDuration
 	}
 
@@ -131,10 +119,10 @@ func (p *probe) Enable() (err error) {
 }
 
 func (p *probe) Disable() (err error) {
-	if !p.allowProfiling {
+	if err = p.configuration.load(); err != nil {
 		return
 	}
-	if err = p.assertConfigurationIsValid(); err != nil {
+	if !p.configuration.canProfile() {
 		return
 	}
 
@@ -158,10 +146,10 @@ func (p *probe) Disable() (err error) {
 }
 
 func (p *probe) End() (err error) {
-	if !p.allowProfiling {
+	if err = p.configuration.load(); err != nil {
 		return
 	}
-	if err = p.assertConfigurationIsValid(); err != nil {
+	if !p.configuration.canProfile() {
 		return
 	}
 
@@ -185,10 +173,10 @@ func (p *probe) End() (err error) {
 }
 
 func (p *probe) EndAndWait() (err error) {
-	if !p.allowProfiling {
+	if err = p.configuration.load(); err != nil {
 		return
 	}
-	if err = p.assertConfigurationIsValid(); err != nil {
+	if !p.configuration.canProfile() {
 		return
 	}
 
@@ -211,10 +199,6 @@ func (p *probe) EndAndWait() (err error) {
 	p.endProfile()
 	Log.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
 	return
-}
-
-func (p *probe) ProfileOnDemandOnly() {
-	p.allowProfiling = isBlackfireQueryEnvSet()
 }
 
 func (p *probe) startTriggerRearmLoop() {
@@ -420,13 +404,4 @@ func (p *probe) onProfileDisableTriggered(shouldEndProfile bool, callback func()
 	if callback != nil {
 		go callback()
 	}
-}
-
-func (p *probe) assertConfigurationIsValid() error {
-	if !p.configuration.isValid {
-		return fmt.Errorf("The Blackfire profiler has an invalid configuration. "+
-			"Please check your settings. You may need to call blackfire.Configure(). "+
-			"Configuration errors = %v", p.configuration.validationErrors)
-	}
-	return nil
 }
