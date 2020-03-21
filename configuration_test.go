@@ -23,16 +23,31 @@ func URL(contents string) *url.URL {
 	return result
 }
 
-func newManualConfig() *BlackfireConfiguration {
-	config := new(BlackfireConfiguration)
-	config.AgentSocket = "tcp://127.0.0.1:3333"
-	config.AgentTimeout = time.Second * 3
-	config.BlackfireQuery = "blackfire_query_manual"
-	config.ClientID = "client_id_manual"
-	config.ClientToken = "client_token_manual"
-	config.HTTPEndpoint = URL("https://blackfire.io/manual")
-	config.LogFile = "/var/blackfire-manual.log"
-	config.LogLevel = 3
+func newConfig() *BlackfireConfiguration {
+	return &BlackfireConfiguration{
+		AgentSocket:    "tcp://127.0.0.1:3333",
+		AgentTimeout:   time.Second * 3,
+		BlackfireQuery: "blackfire_query_manual",
+		ClientID:       "client_id_manual",
+		ClientToken:    "client_token_manual",
+		HTTPEndpoint:   URL("https://blackfire.io/manual"),
+		LogFile:        "/var/blackfire-manual.log",
+		LogLevel:       3,
+	}
+}
+
+func newMixedConfig() *BlackfireConfiguration {
+	config := newConfig()
+
+	// Use default
+	os.Unsetenv("BLACKFIRE_ENDPOINT")
+	config.HTTPEndpoint = nil
+
+	// Use env
+	config.LogFile = ""
+
+	// Use ini
+	config.AgentTimeout = 0
 
 	return config
 }
@@ -83,6 +98,7 @@ func (s *BlackfireSuite) TestConfigurationIniFile(c *C) {
 
 func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	setupEnv()
+	defer unsetEnv()
 
 	config := newBlackfireConfiguration(nil)
 	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
@@ -94,6 +110,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert(2, Equals, config.LogLevel)
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
+	setupEnv()
 	config = newBlackfireConfiguration(&BlackfireConfiguration{IniFilePath: "fixtures/test_blackfire.ini"})
 	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
@@ -103,15 +120,11 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
 	c.Assert(2, Equals, config.LogLevel)
 	c.Assert(time.Second*1, Equals, config.AgentTimeout)
-
-	unsetEnv()
 }
 
 func (s *BlackfireSuite) TestConfigurationManual(c *C) {
-	setupEnv()
-	manualConfig := newManualConfig()
-
-	config := newBlackfireConfiguration(manualConfig)
+	config := newConfig()
+	config.load()
 	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
 	c.Assert("client_id_manual", Equals, config.ClientID)
@@ -121,8 +134,9 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert(3, Equals, config.LogLevel)
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
 
-	manualConfig.IniFilePath = "fixtures/test_blackfire.ini"
-	config = newBlackfireConfiguration(manualConfig)
+	config = newConfig()
+	config.IniFilePath = "fixtures/test_blackfire.ini"
+	config.load()
 	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
 	c.Assert("client_id_manual", Equals, config.ClientID)
@@ -131,45 +145,33 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert("/var/blackfire-manual.log", Equals, config.LogFile)
 	c.Assert(3, Equals, config.LogLevel)
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
-
-	unsetEnv()
 }
 
 func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
 	setupEnv()
-	manualConfig := newManualConfig()
+	defer unsetEnv()
 
-	// Use default
-	os.Unsetenv("BLACKFIRE_ENDPOINT")
-	manualConfig.HTTPEndpoint = nil
-
-	// Use env
-	manualConfig.LogFile = ""
-
-	// Use ini
-	manualConfig.AgentTimeout = 0
-
-	config := newBlackfireConfiguration(manualConfig)
-
-	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
-	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
-	c.Assert("client_id_manual", Equals, config.ClientID)
-	c.Assert("client_token_manual", Equals, config.ClientToken)
+	config := newMixedConfig()
+	config.load()
+	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
+	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
+	c.Assert("client_id_env", Equals, config.ClientID)
+	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
 	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(3, Equals, config.LogLevel)
+	c.Assert(2, Equals, config.LogLevel)
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
-	manualConfig.IniFilePath = "fixtures/test2_blackfire.ini"
-	config = newBlackfireConfiguration(manualConfig)
-	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
-	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
-	c.Assert("client_id_manual", Equals, config.ClientID)
-	c.Assert("client_token_manual", Equals, config.ClientToken)
+	setupEnv()
+	config = newMixedConfig()
+	config.IniFilePath = "fixtures/test2_blackfire.ini"
+	config.load()
+	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
+	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
+	c.Assert("client_id_env", Equals, config.ClientID)
+	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
 	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(3, Equals, config.LogLevel)
+	c.Assert(2, Equals, config.LogLevel)
 	c.Assert(time.Second*1, Equals, config.AgentTimeout)
-
-	unsetEnv()
 }

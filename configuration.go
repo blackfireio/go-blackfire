@@ -39,7 +39,7 @@ type BlackfireConfiguration struct {
 	ClientToken string
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
 	HTTPEndpoint *url.URL
-	// Path to the log file (default go-probe.log)
+	// Path to the log file, supports stderr and stdout as well (default stderr)
 	LogFile string
 	// Log verbosity 4: debug, 3: info, 2: warning, 1: error (default 1)
 	LogLevel int
@@ -173,8 +173,6 @@ func (c *BlackfireConfiguration) configureFromIniFile() {
 		}
 	}
 
-	Log.Debug().Msgf("Blackfire: Read configuration from INI file %s", path)
-
 	iniConfig, err := ini.Load(path)
 	if err != nil {
 		Log.Error().Msgf("Blackfire: Could not load Blackfire config file %s: %v", path, err)
@@ -207,14 +205,13 @@ func (c *BlackfireConfiguration) configureFromIniFile() {
 }
 
 func (c *BlackfireConfiguration) configureFromEnv() {
-	Log.Debug().Msgf("Blackfire: Read configuration from ENV")
-
 	if v := readEnvVar("BLACKFIRE_AGENT_SOCKET"); v != "" {
 		c.AgentSocket = v
 	}
 
 	if v := readEnvVar("BLACKFIRE_QUERY"); v != "" {
 		c.BlackfireQuery = v
+		os.Unsetenv("BLACKFIRE_QUERY")
 	}
 
 	if v := readEnvVar("BLACKFIRE_CLIENT_ID"); v != "" {
@@ -284,7 +281,6 @@ func (c *BlackfireConfiguration) validate() []error {
 func readEnvVar(name string) string {
 	if v := os.Getenv(name); v != "" {
 		Log.Debug().Msgf("Blackfire: Read ENV var %s: %s", name, v)
-		os.Unsetenv(name)
 		return v
 	}
 	return ""

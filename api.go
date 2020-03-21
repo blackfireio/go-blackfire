@@ -7,19 +7,15 @@ import (
 
 var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently in progress. Please wait for it to finish.")
 
-// Configure configures the probe (optional). This should be done before any other API calls.
-// If this function isn't called, the probe will get its configuration from
-// the ENV variables and the default blackfire.ini file location.
+// Configure explicitely configures the probe. This should be done before any other API calls.
 //
 // Configuration is initialized in a set order, with later steps overriding
-// earlier steps. Missing or zero values in manualConfig will not be applied.
-// See: Zero values https://tour.golang.org/basics/12
+// earlier steps:
 //
-// Initialization order:
 // * Defaults
 // * INI file
+// * Explicit configuration in Go code
 // * Environment variables
-// * Manual configuration
 //
 // config will be ignored if nil.
 func Configure(config *BlackfireConfiguration) error {
