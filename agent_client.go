@@ -20,7 +20,6 @@ import (
 )
 
 type agentClient struct {
-	profileCount        int
 	agentNetwork        string
 	agentAddress        string
 	signingEndpoint     *url.URL
@@ -57,8 +56,6 @@ func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error)
 }
 
 func (c *agentClient) StartNewRequest() error {
-	c.profileCount = 0
-
 	if c.firstBlackfireQuery != "" {
 		c.rawBlackfireQuery = c.firstBlackfireQuery
 		c.firstBlackfireQuery = ""
@@ -81,16 +78,6 @@ func (c *agentClient) LastProfileURLs() []string {
 
 func (c *agentClient) getGoVersion() string {
 	return fmt.Sprintf("go-%s", runtime.Version()[2:])
-}
-
-func (c *agentClient) getBlackfireQueryHeader() string {
-	builder := strings.Builder{}
-	builder.WriteString(c.rawBlackfireQuery)
-	if c.profileCount > 0 {
-		builder.WriteString("&sub_profile=")
-		builder.WriteString(fmt.Sprintf(":%09d", c.profileCount))
-	}
-	return builder.String()
 }
 
 func (c *agentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
@@ -152,7 +139,7 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// These must be done separately from the rest of the headers because they
 	// either must be sent in a specific order, or use nonstandard encoding.
 	orderedHeaders := []string{
-		fmt.Sprintf("Blackfire-Query: %s", c.getBlackfireQueryHeader()),
+		fmt.Sprintf("Blackfire-Query: %s", c.rawBlackfireQuery),
 		fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
 
@@ -207,8 +194,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	}
 	defer func() {
 		if err == nil {
-			c.profileCount++
-			Log.Debug().Msgf("Profile %d sent", c.profileCount)
+			Log.Debug().Msgf("Profile sent")
 			err = conn.Close()
 		} else {
 			// We want the error that occurred earlier, not an error from close.
