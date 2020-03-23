@@ -237,9 +237,9 @@ func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer) (err error) {
 
 func generateContextStringFromSlice(args []string) string {
 	s := strings.Builder{}
-	s.WriteString(url.QueryEscape("argv[0]="))
+	s.WriteString("script=")
 	s.WriteString(url.QueryEscape(args[0]))
-	for i := 1; i < len(os.Args); i++ {
+	for i := 0; i < len(args); i++ {
 		argv := url.QueryEscape(fmt.Sprintf("argv[%d]", i))
 		value := url.QueryEscape(args[i])
 		s.WriteString(fmt.Sprintf("&%s=%s", argv, value))
