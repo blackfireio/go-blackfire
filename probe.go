@@ -55,6 +55,9 @@ func (p *probe) Configure(config *BlackfireConfiguration) (err error) {
 }
 
 func (p *probe) IsProfiling() bool {
+	if err := p.configuration.load(); err != nil {
+		return false
+	}
 	if !p.configuration.canProfile() {
 		return false
 	}
