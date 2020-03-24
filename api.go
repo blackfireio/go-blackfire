@@ -64,3 +64,9 @@ func End() error {
 func EndAndWait() error {
 	return globalProbe.EndAndWait()
 }
+
+// GenerateSubProfileQuery generates a Blackfire query
+// to attach a subprofile with the current one as a parent
+func GenerateSubProfileQuery() (string, error) {
+	return globalProbe.GenerateSubProfileQuery()
+}

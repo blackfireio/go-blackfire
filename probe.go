@@ -3,13 +3,18 @@ package blackfire
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"math/rand"
+	"net/url"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/blackfireio/go-blackfire/pprof_reader"
+	"github.com/pkg/errors"
 )
 
 // globalProbe is the access point for all probe functionality. The API, signal,
@@ -201,6 +206,45 @@ func (p *probe) EndAndWait() (err error) {
 	return
 }
 
+func (p *probe) GenerateSubProfileQuery() (string, error) {
+	if err := p.prepareAgentClient(); err != nil {
+		return "", err
+	}
+	currentQuery, err := p.agentClient.CurrentBlackfireQuery()
+	if err != nil {
+		return "", err
+	}
+	parts := strings.Split(currentQuery, "signature=")
+	if len(parts) < 2 {
+		return "", errors.New("Blackfire: Unable to generate a sub-profile query")
+	}
+	challenge := strings.TrimRight(parts[0], "&")
+	parts = strings.Split(parts[1], "&")
+	signature := parts[0]
+	args := make(url.Values)
+	if len(parts) > 1 {
+		args, err = url.ParseQuery(parts[1])
+		if err != nil {
+			return "", errors.Wrapf(err, "Blackfire: Unable to generate a sub-profile query")
+		}
+	}
+	args.Del("aggreg_samples")
+
+	parent := ""
+	parts = strings.Split(args.Get("sub_profile"), ":")
+	if len(parts) > 1 {
+		parent = parts[1]
+	}
+	token := make([]byte, 7)
+	rand.Read(token)
+	id := base64.StdEncoding.EncodeToString(token)
+	id = strings.TrimRight(id, "=")
+	id = strings.ReplaceAll(id, "+", "A")
+	id = strings.ReplaceAll(id, "/", "B")
+	args.Set("sub_profile", parent+":"+id[0:9])
+	return challenge + "&signature=" + signature + "&" + args.Encode(), nil
+}
+
 func (p *probe) startTriggerRearmLoop() {
 	go func() {
 		for {
@@ -233,14 +277,11 @@ func (p *probe) currentMemBuffer() *bytes.Buffer {
 }
 
 func (p *probe) prepareAgentClient() (err error) {
-	if p.agentClient == nil {
-		p.agentClient, err = NewAgentClient(p.configuration)
-		if err != nil {
-			return err
-		}
+	if p.agentClient != nil {
+		return nil
 	}
-
-	return p.agentClient.StartNewRequest()
+	p.agentClient, err = NewAgentClient(p.configuration)
+	return err
 }
 
 func (p *probe) canEnableProfiling() bool {

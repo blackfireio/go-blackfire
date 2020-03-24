@@ -55,14 +55,21 @@ func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error)
 	}, nil
 }
 
-func (c *agentClient) StartNewRequest() error {
+func (c *agentClient) CurrentBlackfireQuery() (string, error) {
+	if c.rawBlackfireQuery != "" {
+		return c.rawBlackfireQuery, nil
+	}
 	if c.firstBlackfireQuery != "" {
 		c.rawBlackfireQuery = c.firstBlackfireQuery
 		c.firstBlackfireQuery = ""
-		return nil
+		return c.rawBlackfireQuery, nil
 	}
-
-	return c.createRequest()
+	query, err := c.createRequest()
+	if err != nil {
+		return "", err
+	}
+	c.rawBlackfireQuery = query
+	return c.rawBlackfireQuery, nil
 }
 
 func (c *agentClient) LastProfileURLs() []string {
@@ -121,8 +128,8 @@ func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 
 func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// https://private.blackfire.io/docs/tech/profiling-protocol/#profile-creation-prolog
-	if len(c.rawBlackfireQuery) == 0 {
-		return fmt.Errorf("Agent client has not been properly initialized (Blackfire query is not set)")
+	if _, err := c.CurrentBlackfireQuery(); err != nil {
+		return err
 	}
 
 	var osVersion url.Values
@@ -142,6 +149,7 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 		fmt.Sprintf("Blackfire-Query: %s", c.rawBlackfireQuery),
 		fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)),
 	}
+	c.rawBlackfireQuery = ""
 
 	unorderedHeaders := make(map[string]interface{})
 	unorderedHeaders["os-version"] = osVersion
@@ -222,43 +230,40 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	return
 }
 
-func (c *agentClient) createRequest() (err error) {
-	var request *http.Request
+func (c *agentClient) createRequest() (string, error) {
 	var response *http.Response
 	Log.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
-	request, err = http.NewRequest("POST", c.signingEndpoint.String(), nil)
+	request, err := http.NewRequest("POST", c.signingEndpoint.String(), nil)
 	if err != nil {
-		return
+		return "", err
 	}
 	request.Header.Add("Authorization", c.signingAuth)
 	Log.Debug().Msg("Blackfire: Send signing request")
 	client := http.DefaultClient
 	response, err = client.Do(request)
 	if err != nil {
-		return
+		return "", err
 	}
 	if response.StatusCode != 201 {
-		err = fmt.Errorf("Signing request to %s failed: %s", c.signingEndpoint, response.Status)
-		return
+		return "", fmt.Errorf("Signing request to %s failed: %s", c.signingEndpoint, response.Status)
 	}
 	var responseData []byte
 	responseData, err = ioutil.ReadAll(response.Body)
 	if err != nil {
-		return
+		return "", err
 	}
 	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
 	var signingResponse signature
 	err = json.Unmarshal(responseData, &signingResponse)
 	if err != nil {
 		err = fmt.Errorf("JSON error: %v", err)
-		return
+		return "", err
 	}
 	if signingResponse.QueryString == "" {
-		return fmt.Errorf("Signing response blackfire query was empty")
+		return "", fmt.Errorf("Signing response blackfire query was empty")
 	}
-	c.rawBlackfireQuery = signingResponse.QueryString
 	c.links = append([]linksMap{signingResponse.Links}, c.links[:9]...)
-	return
+	return signingResponse.QueryString, nil
 }
 
 func parseNetworkAddressString(agentSocket string) (network string, address string, err error) {
