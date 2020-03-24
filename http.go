@@ -8,14 +8,17 @@ import (
 )
 
 // NewServeMux returns an http.ServerMux that allows to manage profiling from HTTP
-func NewServeMux(prefix string) *http.ServeMux {
+func NewServeMux(prefix string) (mux *http.ServeMux, err error) {
+	if err = globalProbe.configuration.load(); err != nil {
+		return
+	}
 	prefix = strings.Trim(prefix, "/")
-	mux := http.NewServeMux()
+	mux = http.NewServeMux()
 	mux.HandleFunc("/"+prefix+"/enable", EnableHandler)
 	mux.HandleFunc("/"+prefix+"/disable", DisableHandler)
 	mux.HandleFunc("/"+prefix+"/end", EndHandler)
 
-	return mux
+	return
 }
 
 // EnableHandler starts profiling via HTTP
