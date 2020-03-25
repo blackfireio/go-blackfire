@@ -206,6 +206,7 @@ func (p *probe) EndAndWait() (err error) {
 	Log.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
 	if err = p.endProfile(); err != nil {
 		Log.Error().Msgf("Blackfire (end profile): %v", err)
+		return
 	}
 	Log.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
 	return
