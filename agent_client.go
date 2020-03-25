@@ -26,15 +26,11 @@ type agentClient struct {
 	signingAuth         string
 	firstBlackfireQuery string
 	rawBlackfireQuery   string
-	links               []linksMap
+	links               []*linksMap
+	profiles            []*Profile
 }
 
 type linksMap map[string]map[string]string
-
-type signature struct {
-	QueryString string   `json:"query_string"`
-	Links       linksMap `json:"_links"`
-}
 
 func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error) {
 	agentNetwork, agentAddress, err := parseNetworkAddressString(configuration.AgentSocket)
@@ -51,7 +47,8 @@ func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error)
 		signingEndpoint:     signingEndpoint,
 		signingAuth:         fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
 		firstBlackfireQuery: configuration.BlackfireQuery,
-		links:               make([]linksMap, 10),
+		links:               make([]*linksMap, 10),
+		profiles:            make([]*Profile, 10),
 	}, nil
 }
 
@@ -72,15 +69,19 @@ func (c *agentClient) CurrentBlackfireQuery() (string, error) {
 	return c.rawBlackfireQuery, nil
 }
 
-func (c *agentClient) LastProfileURLs() []string {
-	urls := []string{}
-	for _, links := range c.links {
-		if graphURL, ok := links["graph_url"]; ok {
-			urls = append(urls, graphURL["href"])
+func (c *agentClient) LastProfiles() []*Profile {
+	profiles := []*Profile{}
+	for _, profile := range c.profiles {
+		if profile == nil {
+			continue
 		}
+		if err := profile.load(c.signingAuth); err != nil {
+			Log.Debug().Msgf("Blackfire: Unable to get profile data for %s: %s", profile.UUID, err)
+			continue
+		}
+		profiles = append(profiles, profile)
 	}
-
-	return urls
+	return profiles
 }
 
 func (c *agentClient) getGoVersion() string {
@@ -253,7 +254,11 @@ func (c *agentClient) createRequest() (string, error) {
 		return "", err
 	}
 	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
-	var signingResponse signature
+	var signingResponse struct {
+		UUID        string   `json:"uuid"`
+		QueryString string   `json:"query_string"`
+		Links       linksMap `json:"_links"`
+	}
 	err = json.Unmarshal(responseData, &signingResponse)
 	if err != nil {
 		err = fmt.Errorf("JSON error: %v", err)
@@ -262,7 +267,16 @@ func (c *agentClient) createRequest() (string, error) {
 	if signingResponse.QueryString == "" {
 		return "", fmt.Errorf("Signing response blackfire query was empty")
 	}
-	c.links = append([]linksMap{signingResponse.Links}, c.links[:9]...)
+	profileURL, ok := signingResponse.Links["profile"]
+	if !ok {
+		return "", fmt.Errorf("Signing response blackfire profile URL was empty")
+	}
+	c.links = append([]*linksMap{&signingResponse.Links}, c.links[:9]...)
+	c.profiles = append([]*Profile{{
+		UUID:   signingResponse.UUID,
+		URL:    signingResponse.Links["graph_url"]["href"],
+		APIURL: profileURL["href"],
+	}}, c.profiles[:9]...)
 	return signingResponse.QueryString, nil
 }
 
