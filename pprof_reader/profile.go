@@ -154,6 +154,18 @@ func (p *Profile) Finish() {
 	})
 }
 
+func decycleStack(stack []string) {
+	seen := make(map[string]int)
+	for i, v := range stack {
+		if dupCount, ok := seen[v]; ok {
+			stack[i] = fmt.Sprintf("%s@%d", v, dupCount)
+			seen[v] = dupCount + 1
+		} else {
+			seen[v] = 1
+		}
+	}
+}
+
 func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile {
 	// All pprof profiles have count in index 0, and whatever value in index 1.
 	// I haven't encountered a profile with sample value index > 1, and in fact
@@ -174,6 +186,7 @@ func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile
 				stack = append(stack, line.Function.Name)
 			}
 		}
+		decycleStack(stack)
 		return stack
 	}
 
