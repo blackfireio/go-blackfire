@@ -19,7 +19,7 @@ import (
 const golangDefaultCPUSampleRate = 100
 
 type BlackfireConfiguration struct {
-	IniFilePath string
+	ConfigFile string
 
 	// Disables the profiler unless the BLACKFIRE_QUERY env variable is set.
 	// When the profiler is disabled, all API calls become no-ops.
@@ -166,7 +166,7 @@ func (c *BlackfireConfiguration) configureFromDefaults() {
 }
 
 func (c *BlackfireConfiguration) configureFromIniFile() {
-	path := c.IniFilePath
+	path := c.ConfigFile
 	if path == "" {
 		if path = c.getDefaultIniPath(); path == "" {
 			return

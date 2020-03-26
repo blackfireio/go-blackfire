@@ -89,7 +89,7 @@ func (s *BlackfireSuite) TestConfigurationDefaults(c *C) {
 }
 
 func (s *BlackfireSuite) TestConfigurationIniFile(c *C) {
-	config := newBlackfireConfiguration(&BlackfireConfiguration{IniFilePath: "fixtures/test_blackfire.ini"})
+	config := newBlackfireConfiguration(&BlackfireConfiguration{ConfigFile: "fixtures/test_blackfire.ini"})
 	c.Assert("https://blackfire.io/ini", Equals, config.HTTPEndpoint.String())
 	c.Assert("ab6f24b1-3103-4503-9f68-93d4b3f10c7c", Equals, config.ClientID)
 	c.Assert("ec4f5fb9f43ec7004b44fc2f217c944c324c6225efcf144c2cee65eb5c45754c", Equals, config.ClientToken)
@@ -111,7 +111,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
 	setupEnv()
-	config = newBlackfireConfiguration(&BlackfireConfiguration{IniFilePath: "fixtures/test_blackfire.ini"})
+	config = newBlackfireConfiguration(&BlackfireConfiguration{ConfigFile: "fixtures/test_blackfire.ini"})
 	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
 	c.Assert("client_id_env", Equals, config.ClientID)
@@ -135,7 +135,7 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
 
 	config = newConfig()
-	config.IniFilePath = "fixtures/test_blackfire.ini"
+	config.ConfigFile = "fixtures/test_blackfire.ini"
 	config.load()
 	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
@@ -164,7 +164,7 @@ func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
 
 	setupEnv()
 	config = newMixedConfig()
-	config.IniFilePath = "fixtures/test2_blackfire.ini"
+	config.ConfigFile = "fixtures/test2_blackfire.ini"
 	config.load()
 	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
