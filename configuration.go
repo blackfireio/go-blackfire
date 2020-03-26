@@ -19,6 +19,8 @@ import (
 const golangDefaultCPUSampleRate = 100
 
 type BlackfireConfiguration struct {
+	// The configuration path to the Blackfire CLI ini file
+	// Defaults to ~/.blackfire.ini
 	ConfigFile string
 
 	// Disables the profiler unless the BLACKFIRE_QUERY env variable is set.
