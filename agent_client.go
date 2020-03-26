@@ -32,7 +32,7 @@ type agentClient struct {
 
 type linksMap map[string]map[string]string
 
-func NewAgentClient(configuration *BlackfireConfiguration) (*agentClient, error) {
+func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 	agentNetwork, agentAddress, err := parseNetworkAddressString(configuration.AgentSocket)
 	if err != nil {
 		return nil, err

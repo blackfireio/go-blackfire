@@ -18,7 +18,7 @@ import (
 // It's always been 100hz since the beginning, so it should be safe.
 const golangDefaultCPUSampleRate = 100
 
-type BlackfireConfiguration struct {
+type Configuration struct {
 	// The configuration path to the Blackfire CLI ini file
 	// Defaults to ~/.blackfire.ini
 	ConfigFile string
@@ -60,14 +60,14 @@ type BlackfireConfiguration struct {
 	loader sync.Once
 }
 
-func (c *BlackfireConfiguration) canProfile() bool {
+func (c *Configuration) canProfile() bool {
 	if c.BlackfireQuery == "" && c.OnDemandOnly {
 		return false
 	}
 	return true
 }
 
-func (c *BlackfireConfiguration) setEndpoint(endpoint string) error {
+func (c *Configuration) setEndpoint(endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (c *BlackfireConfiguration) setEndpoint(endpoint string) error {
 	return nil
 }
 
-func (c *BlackfireConfiguration) getDefaultIniPath() string {
+func (c *Configuration) getDefaultIniPath() string {
 	getIniPath := func(dir string) string {
 		if dir == "" {
 			return ""
@@ -119,7 +119,7 @@ func (c *BlackfireConfiguration) getDefaultIniPath() string {
 	return ""
 }
 
-func (c *BlackfireConfiguration) configureLogging() error {
+func (c *Configuration) configureLogging() error {
 	if v := readEnvVar("BLACKFIRE_LOG_LEVEL"); v != "" {
 		level, err := strconv.Atoi(v)
 		if err != nil {
@@ -141,7 +141,7 @@ func (c *BlackfireConfiguration) configureLogging() error {
 	return setLogFile(c.LogFile)
 }
 
-func (c *BlackfireConfiguration) configureFromDefaults() {
+func (c *Configuration) configureFromDefaults() {
 	if c.AgentSocket == "" {
 		switch runtime.GOOS {
 		case "windows":
@@ -167,7 +167,7 @@ func (c *BlackfireConfiguration) configureFromDefaults() {
 	}
 }
 
-func (c *BlackfireConfiguration) configureFromIniFile() {
+func (c *Configuration) configureFromIniFile() {
 	path := c.ConfigFile
 	if path == "" {
 		if path = c.getDefaultIniPath(); path == "" {
@@ -206,7 +206,7 @@ func (c *BlackfireConfiguration) configureFromIniFile() {
 	}
 }
 
-func (c *BlackfireConfiguration) configureFromEnv() {
+func (c *Configuration) configureFromEnv() {
 	if v := readEnvVar("BLACKFIRE_AGENT_SOCKET"); v != "" {
 		c.AgentSocket = v
 	}
@@ -235,7 +235,7 @@ func (c *BlackfireConfiguration) configureFromEnv() {
 	}
 }
 
-func (c *BlackfireConfiguration) load() (err error) {
+func (c *Configuration) load() (err error) {
 	errs := []error{}
 	c.loader.Do(func() {
 		if err := c.configureLogging(); err != nil {
@@ -252,7 +252,7 @@ func (c *BlackfireConfiguration) load() (err error) {
 	return nil
 }
 
-func (c *BlackfireConfiguration) validate() []error {
+func (c *Configuration) validate() []error {
 	errors := []error{}
 
 	if c.AgentTimeout <= 0 {

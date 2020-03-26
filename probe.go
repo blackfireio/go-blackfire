@@ -33,7 +33,7 @@ const (
 )
 
 type probe struct {
-	configuration         *BlackfireConfiguration
+	configuration         *Configuration
 	agentClient           *agentClient
 	mutex                 sync.Mutex
 	profileDisableTrigger chan bool
@@ -46,13 +46,13 @@ type probe struct {
 
 func newProbe() *probe {
 	p := &probe{
-		configuration: &BlackfireConfiguration{},
+		configuration: &Configuration{},
 	}
 	p.startTriggerRearmLoop()
 	return p
 }
 
-func (p *probe) Configure(config *BlackfireConfiguration) (err error) {
+func (p *probe) Configure(config *Configuration) (err error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.configuration = config

@@ -18,7 +18,7 @@ var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently
 // * Environment variables
 //
 // config will be ignored if nil.
-func Configure(config *BlackfireConfiguration) error {
+func Configure(config *Configuration) error {
 	return globalProbe.Configure(config)
 }
 
