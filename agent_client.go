@@ -128,7 +128,7 @@ func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 }
 
 func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
-	// https://private.blackfire.io/docs/kb/profiling-protocol/#profile-creation-prolog
+	// https://private.blackfire.io/docs/knowledge-base/profiling-protocol/#profile-creation-prolog
 	if _, err := c.CurrentBlackfireQuery(); err != nil {
 		return err
 	}
