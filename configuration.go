@@ -156,10 +156,10 @@ func (c *Configuration) configureFromDefaults() {
 	if c.HTTPEndpoint == nil {
 		c.setEndpoint("https://blackfire.io")
 	}
-	if c.AgentTimeout == 0 {
+	if c.AgentTimeout < 1 {
 		c.AgentTimeout = time.Millisecond * 250
 	}
-	if c.MaxProfileDuration == 0 {
+	if c.MaxProfileDuration < 1 {
 		c.MaxProfileDuration = time.Minute * 10
 	}
 	if c.DefaultCPUSampleRateHz == 0 {
@@ -255,26 +255,10 @@ func (c *Configuration) load() (err error) {
 func (c *Configuration) validate() []error {
 	errors := []error{}
 
-	if c.AgentTimeout <= 0 {
-		errors = append(errors, fmt.Errorf("Agent timeout cannot be less than 1"))
-	}
-
-	if c.AgentSocket == "" {
-		errors = append(errors, fmt.Errorf("Agent socket cannot be empty"))
-	}
-
 	if c.BlackfireQuery == "" {
 		if c.ClientID == "" || c.ClientToken == "" {
 			errors = append(errors, fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set"))
 		}
-	}
-
-	if c.HTTPEndpoint == nil {
-		errors = append(errors, fmt.Errorf("HTTP endpoint cannot be empty"))
-	}
-
-	if c.MaxProfileDuration < 1 {
-		errors = append(errors, fmt.Errorf("Max profile duration cannot be less than 1"))
 	}
 
 	return errors
