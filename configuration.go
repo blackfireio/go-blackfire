@@ -1,6 +1,7 @@
 package blackfire
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -66,6 +67,7 @@ type Configuration struct {
 	ShouldDumpProfiles bool
 
 	loader sync.Once
+	err    error
 }
 
 func (c *Configuration) canProfile() bool {
@@ -221,8 +223,7 @@ func (c *Configuration) configureFromEnv() {
 	}
 }
 
-func (c *Configuration) load() (err error) {
-	errs := []error{}
+func (c *Configuration) load() error {
 	c.loader.Do(func() {
 		if c.Logger == nil {
 			logger := NewLoggerFromEnvVars()
@@ -231,18 +232,17 @@ func (c *Configuration) load() (err error) {
 		c.configureFromEnv()
 		c.configureFromIniFile()
 		c.configureFromDefaults()
-		errs = append(errs, c.validate())
+		if c.err = c.validate(); c.err != nil {
+			c.Logger.Warn().Msg(c.err.Error())
+		}
 	})
-	if len(errs) > 0 {
-		return fmt.Errorf("Blackfire: Invalid configuration: %v", errs)
-	}
-	return nil
+	return c.err
 }
 
 func (c *Configuration) validate() error {
 	if c.BlackfireQuery == "" {
 		if c.ClientID == "" || c.ClientToken == "" {
-			return fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set")
+			return errors.New("Either Blackfire query must be set, or client ID and client token must be set")
 		}
 	}
 	return nil

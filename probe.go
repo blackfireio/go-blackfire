@@ -52,7 +52,7 @@ func newProbe() *probe {
 	return p
 }
 
-func (p *probe) Configure(config *Configuration) (err error) {
+func (p *probe) Configure(config *Configuration) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.configuration = config
