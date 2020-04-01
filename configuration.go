@@ -244,7 +244,7 @@ func (c *Configuration) load() (err error) {
 		c.configureFromEnv()
 		c.configureFromIniFile()
 		c.configureFromDefaults()
-		errs = append(errs, c.validate()...)
+		errs = append(errs, c.validate())
 	})
 	if len(errs) > 0 {
 		return fmt.Errorf("Blackfire: Invalid configuration: %v", errs)
@@ -252,16 +252,13 @@ func (c *Configuration) load() (err error) {
 	return nil
 }
 
-func (c *Configuration) validate() []error {
-	errors := []error{}
-
+func (c *Configuration) validate() error {
 	if c.BlackfireQuery == "" {
 		if c.ClientID == "" || c.ClientToken == "" {
-			errors = append(errors, fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set"))
+			return fmt.Errorf("Either Blackfire query must be set, or client ID and client token must be set")
 		}
 	}
-
-	return errors
+	return nil
 }
 
 func readEnvVar(name string) string {
