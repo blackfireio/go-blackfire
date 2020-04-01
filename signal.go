@@ -16,14 +16,15 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%s] triggers profiling for %.0f seconds", sig, float64(duration)/1000000000)
+	logger := globalProbe.configuration.Logger
+	logger.Info().Msgf("Blackfire (signal): Signal [%s] triggers profiling for %.0f seconds", sig, float64(duration)/1000000000)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%s): Profiling for %.0f seconds", sig, float64(duration)/1000000000)
+		logger.Info().Msgf("Blackfire (%s): Profiling for %.0f seconds", sig, float64(duration)/1000000000)
 		if err := globalProbe.ProfileWithCallback(duration, func() {
-			Log.Info().Msgf("Blackfire (%s): Profile complete", sig)
+			logger.Info().Msgf("Blackfire (%s): Profile complete", sig)
 		}); err != nil {
-			Log.Error().Msgf("Blackfire (EnableOnSignal): %v", err)
+			logger.Error().Msgf("Blackfire (EnableOnSignal): %v", err)
 		}
 	})
 
@@ -39,12 +40,13 @@ func DisableOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%s] stops profiling", sig)
+	logger := globalProbe.configuration.Logger
+	logger.Info().Msgf("Blackfire (signal): Signal [%s] stops profiling", sig)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%s): Disable profiling", sig)
+		logger.Info().Msgf("Blackfire (%s): Disable profiling", sig)
 		if err := globalProbe.Disable(); err != nil {
-			Log.Error().Msgf("Blackfire (DisableOnSignal): %v", err)
+			logger.Error().Msgf("Blackfire (DisableOnSignal): %v", err)
 		}
 	})
 	return
@@ -60,12 +62,13 @@ func EndOnSignal(sig os.Signal) (err error) {
 		return
 	}
 
-	Log.Info().Msgf("Blackfire (signal): Signal [%s] ends the current profile", sig)
+	logger := globalProbe.configuration.Logger
+	logger.Info().Msgf("Blackfire (signal): Signal [%s] ends the current profile", sig)
 
 	callFuncOnSignal(sig, func() {
-		Log.Info().Msgf("Blackfire (%s): End profile", sig)
+		logger.Info().Msgf("Blackfire (%s): End profile", sig)
 		if err := globalProbe.End(); err != nil {
-			Log.Error().Msgf("Blackfire (EndOnSignal): %v", err)
+			logger.Error().Msgf("Blackfire (EndOnSignal): %v", err)
 		}
 	})
 	return

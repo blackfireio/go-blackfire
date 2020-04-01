@@ -1,52 +1,56 @@
 package blackfire
 
 import (
-	"fmt"
 	"io"
+	"log"
 	"os"
-	"strings"
+	"strconv"
 
 	"github.com/rs/zerolog"
 )
 
-var Log zerolog.Logger
-
-var logLevelMappings = map[int]zerolog.Level{
-	1: zerolog.ErrorLevel,
-	2: zerolog.WarnLevel,
-	3: zerolog.InfoLevel,
-	4: zerolog.DebugLevel,
+func NewLogger(path string, level int) zerolog.Logger {
+	return zerolog.New(logWriter(path)).Level(logLevel(level)).With().Timestamp().Logger()
 }
 
-func init() {
-	setLogFile("stderr")
-	setLogLevel(1)
+func NewLoggerFromEnvVars() zerolog.Logger {
+	level := 1
+	if v := os.Getenv("BLACKFIRE_LOG_LEVEL"); v != "" {
+		level, _ = strconv.Atoi(v)
+	}
+	path := ""
+	if v := os.Getenv("BLACKFIRE_LOG_FILE"); v != "" {
+		path = v
+	}
+	return zerolog.New(logWriter(path)).Level(logLevel(level)).With().Timestamp().Logger()
 }
 
-func setLogLevel(level int) {
+func logLevel(level int) zerolog.Level {
 	if level < 1 {
 		level = 1
 	}
 	if level > 4 {
 		level = 4
 	}
-
-	Log = Log.Level(logLevelMappings[level])
+	var levels = map[int]zerolog.Level{
+		1: zerolog.ErrorLevel,
+		2: zerolog.WarnLevel,
+		3: zerolog.InfoLevel,
+		4: zerolog.DebugLevel,
+	}
+	return levels[level]
 }
 
-func setLogFile(filePath string) error {
-	var writer io.Writer
-	if filePath == "" || strings.EqualFold(filePath, "stderr") {
-		writer = os.Stderr
-	} else if strings.EqualFold(filePath, "stdout") {
-		writer = os.Stdout
-	} else {
-		var err error
-		writer, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0664)
-		if err != nil {
-			return fmt.Errorf("could not open log file at %s: %v", filePath, err)
-		}
+func logWriter(path string) io.Writer {
+	if path == "" || path == "stderr" {
+		return os.Stderr
 	}
-	Log = Log.Output(writer)
-	return nil
+	if path == "stdout" {
+		return os.Stdout
+	}
+	writer, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0664)
+	if err != nil {
+		log.Fatalf("could not open log file at %s: %v", path, err)
+	}
+	return writer
 }

@@ -76,11 +76,12 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 	if !p.configuration.canProfile() {
 		return
 	}
+	logger := p.configuration.Logger
 
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEnableProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
 		if p.IsProfiling() {
 			return ProfilerErrorAlreadyProfiling
 		}
@@ -91,7 +92,7 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 	defer p.mutex.Unlock()
 
 	if !p.canEnableProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
 		if p.IsProfiling() {
 			return ProfilerErrorAlreadyProfiling
 		}
@@ -133,11 +134,12 @@ func (p *probe) Disable() (err error) {
 	if !p.configuration.canProfile() {
 		return
 	}
+	logger := p.configuration.Logger
 
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canDisableProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
 		return
 	}
 
@@ -145,7 +147,7 @@ func (p *probe) Disable() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canDisableProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
 		return
 	}
 
@@ -160,11 +162,12 @@ func (p *probe) End() (err error) {
 	if !p.configuration.canProfile() {
 		return
 	}
+	logger := p.configuration.Logger
 
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEndProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
 		return
 	}
 
@@ -172,7 +175,7 @@ func (p *probe) End() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canEndProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
 		return
 	}
 
@@ -187,11 +190,12 @@ func (p *probe) EndAndWait() (err error) {
 	if !p.configuration.canProfile() {
 		return
 	}
+	logger := p.configuration.Logger
 
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEndProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
 		return
 	}
 
@@ -199,16 +203,16 @@ func (p *probe) EndAndWait() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canEndProfiling() {
-		Log.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
+		logger.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
 		return
 	}
 
-	Log.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
+	logger.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
 	if err = p.endProfile(); err != nil {
-		Log.Error().Msgf("Blackfire (end profile): %v", err)
+		logger.Error().Msgf("Blackfire (end profile): %v", err)
 		return
 	}
-	Log.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
+	logger.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
 	return
 }
 
@@ -324,7 +328,8 @@ func (p *probe) canEndProfiling() bool {
 }
 
 func (p *probe) enableProfiling() error {
-	Log.Debug().Msgf("Blackfire: Start profiling")
+	logger := p.configuration.Logger
+	logger.Debug().Msgf("Blackfire: Start profiling")
 
 	p.addNewProfileBufferSet()
 
@@ -356,7 +361,8 @@ func (p *probe) enableProfiling() error {
 }
 
 func (p *probe) disableProfiling() error {
-	Log.Debug().Msgf("Blackfire: Stop profiling")
+	logger := p.configuration.Logger
+	logger.Debug().Msgf("Blackfire: Stop profiling")
 	if !p.canDisableProfiling() {
 		return nil
 	}
@@ -379,7 +385,8 @@ func (p *probe) disableProfiling() error {
 }
 
 func (p *probe) endProfile() error {
-	Log.Debug().Msgf("Blackfire: End profile")
+	logger := p.configuration.Logger
+	logger.Debug().Msgf("Blackfire: End profile")
 	if !p.canEndProfiling() {
 		return nil
 	}
@@ -398,7 +405,7 @@ func (p *probe) endProfile() error {
 	}()
 
 	if p.configuration.ShouldDumpProfiles {
-		Log.Debug().Msgf("Dumping pprof profiles to current dir")
+		logger.Debug().Msgf("Dumping pprof profiles to current dir")
 		pprof_reader.DumpProfiles(p.cpuProfileBuffers, p.memProfileBuffers)
 	}
 
@@ -434,17 +441,18 @@ func (p *probe) triggerStopProfiler(shouldEndProfile bool) {
 }
 
 func (p *probe) onProfileDisableTriggered(shouldEndProfile bool, callback func()) {
-	Log.Debug().Msgf("Blackfire: Received profile disable trigger. shouldEndProfile = %t, callback = %p", shouldEndProfile, callback)
+	logger := p.configuration.Logger
+	logger.Debug().Msgf("Blackfire: Received profile disable trigger. shouldEndProfile = %t, callback = %p", shouldEndProfile, callback)
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	if shouldEndProfile {
 		if err := p.endProfile(); err != nil {
-			Log.Error().Msgf("Blackfire (end profile): %v", err)
+			logger.Error().Msgf("Blackfire (end profile): %v", err)
 		}
 	} else {
 		if err := p.disableProfiling(); err != nil {
-			Log.Error().Msgf("Blackfire (stop profiling): %v", err)
+			logger.Error().Msgf("Blackfire (stop profiling): %v", err)
 		}
 	}
 

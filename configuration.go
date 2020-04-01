@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-ini/ini"
+	"github.com/rs/zerolog"
 )
 
 // This must match the value of `hz` in StartCPUProfile in runtime/pprof/pprof.go
@@ -41,10 +42,8 @@ type Configuration struct {
 	ClientToken string
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
 	HTTPEndpoint *url.URL
-	// Path to the log file, supports stderr and stdout as well (default stderr)
-	LogFile string
-	// Log verbosity 4: debug, 3: info, 2: warning, 1: error (default 1)
-	LogLevel int
+	// A zerolog Logger (default stderr)
+	Logger *zerolog.Logger
 	// The maximum duration of a profile. A profile operation can never exceed
 	// this duration (default 10 minutes).
 	// This guards against runaway profile operations.
@@ -84,14 +83,14 @@ func (c *Configuration) getDefaultIniPath() string {
 		fileName := ".blackfire.ini"
 		filePath := path.Join(path.Clean(dir), fileName)
 		_, err := os.Stat(filePath)
-		Log.Debug().Msgf("Blackfire: Does configuration file exist at %s: %t", filePath, err == nil)
+		c.Logger.Debug().Msgf("Blackfire: Does configuration file exist at %s: %t", filePath, err == nil)
 		if err != nil {
 			return ""
 		}
 		return filePath
 	}
 
-	if iniPath := getIniPath(readEnvVar("BLACKFIRE_HOME")); iniPath != "" {
+	if iniPath := getIniPath(c.readEnvVar("BLACKFIRE_HOME")); iniPath != "" {
 		return iniPath
 	}
 
@@ -117,28 +116,6 @@ func (c *Configuration) getDefaultIniPath() string {
 	}
 
 	return ""
-}
-
-func (c *Configuration) configureLogging() error {
-	if v := readEnvVar("BLACKFIRE_LOG_LEVEL"); v != "" {
-		level, err := strconv.Atoi(v)
-		if err != nil {
-			level = 1
-		}
-		c.LogLevel = level
-	}
-	if c.LogLevel == 0 {
-		c.LogLevel = 1
-	}
-	setLogLevel(c.LogLevel)
-
-	if v := readEnvVar("BLACKFIRE_LOG_FILE"); v != "" {
-		c.LogFile = v
-	}
-	if c.LogFile == "" {
-		c.LogFile = "stderr"
-	}
-	return setLogFile(c.LogFile)
 }
 
 func (c *Configuration) configureFromDefaults() {
@@ -177,60 +154,60 @@ func (c *Configuration) configureFromIniFile() {
 
 	iniConfig, err := ini.Load(path)
 	if err != nil {
-		Log.Error().Msgf("Blackfire: Could not load Blackfire config file %s: %v", path, err)
+		c.Logger.Error().Msgf("Blackfire: Could not load Blackfire config file %s: %v", path, err)
 		return
 	}
 
 	section := iniConfig.Section("blackfire")
 	if section.HasKey("client-id") && c.ClientID == "" {
-		c.ClientID = getStringFromIniSection(section, "client-id")
+		c.ClientID = c.getStringFromIniSection(section, "client-id")
 	}
 
 	if section.HasKey("client-token") && c.ClientToken == "" {
-		c.ClientToken = getStringFromIniSection(section, "client-token")
+		c.ClientToken = c.getStringFromIniSection(section, "client-token")
 	}
 
 	if section.HasKey("endpoint") && c.HTTPEndpoint == nil {
-		endpoint := getStringFromIniSection(section, "endpoint")
+		endpoint := c.getStringFromIniSection(section, "endpoint")
 		if err := c.setEndpoint(endpoint); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from ini file %s, endpoint %s: %v", path, endpoint, err)
+			c.Logger.Error().Msgf("Blackfire: Unable to set from ini file %s, endpoint %s: %v", path, endpoint, err)
 		}
 	}
 
 	if section.HasKey("timeout") && c.AgentTimeout == 0 {
-		timeout := getStringFromIniSection(section, "timeout")
+		timeout := c.getStringFromIniSection(section, "timeout")
 		var err error
 		if c.AgentTimeout, err = parseSeconds(timeout); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from ini file %s, timeout %s: %v", path, timeout, err)
+			c.Logger.Error().Msgf("Blackfire: Unable to set from ini file %s, timeout %s: %v", path, timeout, err)
 		}
 	}
 }
 
 func (c *Configuration) configureFromEnv() {
-	if v := readEnvVar("BLACKFIRE_AGENT_SOCKET"); v != "" {
+	if v := c.readEnvVar("BLACKFIRE_AGENT_SOCKET"); v != "" {
 		c.AgentSocket = v
 	}
 
-	if v := readEnvVar("BLACKFIRE_QUERY"); v != "" {
+	if v := c.readEnvVar("BLACKFIRE_QUERY"); v != "" {
 		c.BlackfireQuery = v
 		os.Unsetenv("BLACKFIRE_QUERY")
 	}
 
-	if v := readEnvVar("BLACKFIRE_CLIENT_ID"); v != "" {
+	if v := c.readEnvVar("BLACKFIRE_CLIENT_ID"); v != "" {
 		c.ClientID = v
 	}
 
-	if v := readEnvVar("BLACKFIRE_CLIENT_TOKEN"); v != "" {
+	if v := c.readEnvVar("BLACKFIRE_CLIENT_TOKEN"); v != "" {
 		c.ClientToken = v
 	}
 
-	if v := readEnvVar("BLACKFIRE_ENDPOINT"); v != "" {
+	if v := c.readEnvVar("BLACKFIRE_ENDPOINT"); v != "" {
 		if err := c.setEndpoint(v); err != nil {
-			Log.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %s: %v", v, err)
+			c.Logger.Error().Msgf("Blackfire: Unable to set from env var BLACKFIRE_ENDPOINT %s: %v", v, err)
 		}
 	}
 
-	if v := readEnvVar("BLACKFIRE_DUMP_PPROF"); v == "true" {
+	if v := c.readEnvVar("BLACKFIRE_DUMP_PPROF"); v == "true" {
 		c.ShouldDumpProfiles = true
 	}
 }
@@ -238,8 +215,9 @@ func (c *Configuration) configureFromEnv() {
 func (c *Configuration) load() (err error) {
 	errs := []error{}
 	c.loader.Do(func() {
-		if err := c.configureLogging(); err != nil {
-			errs = append(errs, err)
+		if c.Logger == nil {
+			logger := NewLoggerFromEnvVars()
+			c.Logger = &logger
 		}
 		c.configureFromEnv()
 		c.configureFromIniFile()
@@ -261,17 +239,17 @@ func (c *Configuration) validate() error {
 	return nil
 }
 
-func readEnvVar(name string) string {
+func (c *Configuration) readEnvVar(name string) string {
 	if v := os.Getenv(name); v != "" {
-		Log.Debug().Msgf("Blackfire: Read ENV var %s: %s", name, v)
+		c.Logger.Debug().Msgf("Blackfire: Read ENV var %s: %s", name, v)
 		return v
 	}
 	return ""
 }
 
-func getStringFromIniSection(section *ini.Section, key string) string {
+func (c *Configuration) getStringFromIniSection(section *ini.Section, key string) string {
 	if v := section.Key(key).String(); v != "" {
-		Log.Debug().Msgf("Blackfire: Read INI key %s: %s", key, v)
+		c.Logger.Debug().Msgf("Blackfire: Read INI key %s: %s", key, v)
 		return v
 	}
 	return ""

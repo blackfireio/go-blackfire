@@ -37,16 +37,17 @@ func NewServeMux(prefix string) (mux *http.ServeMux, err error) {
 
 // DashboardHandler displays the current status of the profiler
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	logger := globalProbe.configuration.Logger
 	statikFS, err := fs.New()
 	if err != nil {
-		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		logger.Error().Msgf("Blackfire (HTTP): %s", err)
 		w.WriteHeader(500)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	f, err := statikFS.Open("/index.html")
 	if err != nil {
-		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		logger.Error().Msgf("Blackfire (HTTP): %s", err)
 		w.WriteHeader(500)
 		w.Write([]byte(err.Error()))
 		return
@@ -54,7 +55,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	contents, err := ioutil.ReadAll(f)
 	if err != nil {
-		Log.Error().Msgf("Blackfire (HTTP): %s", err)
+		logger.Error().Msgf("Blackfire (HTTP): %s", err)
 		w.WriteHeader(500)
 		w.Write([]byte(err.Error()))
 		return
@@ -68,6 +69,7 @@ func DashboardApiHandler(w http.ResponseWriter, r *http.Request) {
 
 // EnableHandler starts profiling via HTTP
 func EnableHandler(w http.ResponseWriter, r *http.Request) {
+	logger := globalProbe.configuration.Logger
 	durationInSeconds, err := parseFloat(r, "duration")
 	if err != nil {
 		writeJsonError(w, &problem{Status: 400, Title: "Wrong duration", Detail: err.Error()})
@@ -76,12 +78,12 @@ func EnableHandler(w http.ResponseWriter, r *http.Request) {
 
 	duration := time.Duration(durationInSeconds * float64(time.Second))
 	if durationInSeconds > 0 {
-		Log.Info().Msgf("Blackfire (HTTP): Profiling for %f seconds", float64(duration)/1000000000)
+		logger.Info().Msgf("Blackfire (HTTP): Profiling for %f seconds", float64(duration)/1000000000)
 	} else {
-		Log.Info().Msgf("Blackfire (HTTP): Enable profiling")
+		logger.Info().Msgf("Blackfire (HTTP): Enable profiling")
 	}
 	err = globalProbe.ProfileWithCallback(duration, func() {
-		Log.Info().Msgf("Blackfire (HTTP): Profile complete")
+		logger.Info().Msgf("Blackfire (HTTP): Profile complete")
 	})
 	if err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "Enable error", Detail: err.Error()})
@@ -92,7 +94,8 @@ func EnableHandler(w http.ResponseWriter, r *http.Request) {
 
 // DisableHandler stops profiling via HTTP
 func DisableHandler(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): Disable profiling")
+	logger := globalProbe.configuration.Logger
+	logger.Info().Msgf("Blackfire (HTTP): Disable profiling")
 	if err := globalProbe.Disable(); err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "Disable error", Detail: err.Error()})
 	} else {
@@ -102,7 +105,8 @@ func DisableHandler(w http.ResponseWriter, r *http.Request) {
 
 // EndHandler stops profiling via HTTP and send the profile to the agent
 func EndHandler(w http.ResponseWriter, r *http.Request) {
-	Log.Info().Msgf("Blackfire (HTTP): End profiling")
+	logger := globalProbe.configuration.Logger
+	logger.Info().Msgf("Blackfire (HTTP): End profiling")
 	if err := globalProbe.EndAndWait(); err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "End error", Detail: err.Error()})
 	} else {
@@ -121,7 +125,8 @@ func parseFloat(r *http.Request, paramName string) (value float64, err error) {
 }
 
 func writeJsonError(w http.ResponseWriter, problem *problem) {
-	Log.Error().Msgf("Blackfire (HTTP): %s: %s", problem.Title, problem.Detail)
+	logger := globalProbe.configuration.Logger
+	logger.Error().Msgf("Blackfire (HTTP): %s: %s", problem.Title, problem.Detail)
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(problem.Status)
 	data, _ := json.Marshal(problem)

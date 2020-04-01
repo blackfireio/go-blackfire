@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/blackfireio/osinfo"
+	"github.com/rs/zerolog"
 )
 
 type agentClient struct {
@@ -28,6 +29,7 @@ type agentClient struct {
 	rawBlackfireQuery   string
 	links               []*linksMap
 	profiles            []*Profile
+	logger              *zerolog.Logger
 }
 
 type linksMap map[string]map[string]string
@@ -49,6 +51,7 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 		firstBlackfireQuery: configuration.BlackfireQuery,
 		links:               make([]*linksMap, 10),
 		profiles:            make([]*Profile, 10),
+		logger:              configuration.Logger,
 	}, nil
 }
 
@@ -76,7 +79,7 @@ func (c *agentClient) LastProfiles() []*Profile {
 			continue
 		}
 		if err := profile.load(c.signingAuth); err != nil {
-			Log.Debug().Msgf("Blackfire: Unable to get profile data for %s: %s", profile.UUID, err)
+			c.logger.Debug().Msgf("Blackfire: Unable to get profile data for %s: %s", profile.UUID, err)
 			continue
 		}
 		profiles = append(profiles, profile)
@@ -103,10 +106,10 @@ func (c *agentClient) loadBlackfireYaml() (data []byte, err error) {
 	var filename string
 	for _, filename = range filenames {
 		if data, err = ioutil.ReadFile(filename); err == nil {
-			Log.Debug().Msgf("Loaded %s", filename)
+			c.logger.Debug().Msgf("Loaded %s", filename)
 			break
 		} else if os.IsNotExist(err) {
-			Log.Debug().Msgf("%s does not exist", filename)
+			c.logger.Debug().Msgf("%s does not exist", filename)
 		} else {
 			return nil, err
 		}
@@ -122,7 +125,7 @@ func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 		return
 	}
 
-	Log.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %d", len(contents))
+	c.logger.Debug().Str("blackfire.yml", string(contents)).Msgf("Send blackfire.yml, size %d", len(contents))
 	err = conn.WriteRawData(contents)
 	return
 }
@@ -198,12 +201,12 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 
 func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	var conn *agentConnection
-	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress); err != nil {
+	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress, c.logger); err != nil {
 		return
 	}
 	defer func() {
 		if err == nil {
-			Log.Debug().Msgf("Profile sent")
+			c.logger.Debug().Msgf("Profile sent")
 			err = conn.Close()
 		} else {
 			// We want the error that occurred earlier, not an error from close.
@@ -223,7 +226,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 		return fmt.Errorf("Blackfire-Error: %s", errResp)
 	}
 
-	Log.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
+	c.logger.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
 	if err = conn.WriteRawData(encodedProfile); err != nil {
 		return
 	}
@@ -233,13 +236,13 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 
 func (c *agentClient) createRequest() (string, error) {
 	var response *http.Response
-	Log.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
+	c.logger.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
 	request, err := http.NewRequest("POST", c.signingEndpoint.String(), nil)
 	if err != nil {
 		return "", err
 	}
 	request.Header.Add("Authorization", c.signingAuth)
-	Log.Debug().Msg("Blackfire: Send signing request")
+	c.logger.Debug().Msg("Blackfire: Send signing request")
 	client := http.DefaultClient
 	response, err = client.Do(request)
 	if err != nil {
@@ -253,7 +256,7 @@ func (c *agentClient) createRequest() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	Log.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
+	c.logger.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
 	var signingResponse struct {
 		UUID        string   `json:"uuid"`
 		QueryString string   `json:"query_string"`
