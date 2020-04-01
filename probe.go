@@ -81,10 +81,8 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEnableProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
-		if p.IsProfiling() {
-			return ProfilerErrorAlreadyProfiling
-		}
+		err = errors.Errorf("unable to enable profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -92,10 +90,8 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 	defer p.mutex.Unlock()
 
 	if !p.canEnableProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to enableProfiling(), but state = %v", p.currentState)
-		if p.IsProfiling() {
-			return ProfilerErrorAlreadyProfiling
-		}
+		err = errors.Errorf("unable to enable profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -139,7 +135,8 @@ func (p *probe) Disable() (err error) {
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canDisableProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to disable profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -147,7 +144,8 @@ func (p *probe) Disable() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canDisableProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to Disable(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to disable profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -167,7 +165,8 @@ func (p *probe) End() (err error) {
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEndProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to end profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -175,7 +174,8 @@ func (p *probe) End() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canEndProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to End(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to end profiling as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -195,7 +195,8 @@ func (p *probe) EndAndWait() (err error) {
 	// Note: We do this once on each side of the mutex to be 100% sure that it's
 	// impossible for deferred/idempotent calls to deadlock, here and forever.
 	if !p.canEndProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to end profiling and wait as state is %v", p.currentState)
+		logger.Error().Err(err).Msgf("Blackfire: wrong profiler state")
 		return
 	}
 
@@ -203,16 +204,17 @@ func (p *probe) EndAndWait() (err error) {
 	defer p.mutex.Unlock()
 
 	if !p.canEndProfiling() {
-		logger.Debug().Msgf("Blackfire: Tried to EndAndWait(), but state = %v", p.currentState)
+		err = errors.Errorf("unable to end profiling and wait as state is %v", p.currentState)
+		logger.Error().Err(err).Msg("Blackfire: wrong profiler state")
 		return
 	}
 
-	logger.Debug().Msgf("Blackfire: Ending the current profile and blocking until it's uploaded")
+	logger.Debug().Msg("Blackfire: Ending the current profile and blocking until it's uploaded")
 	if err = p.endProfile(); err != nil {
 		logger.Error().Msgf("Blackfire (end profile): %v", err)
 		return
 	}
-	logger.Debug().Msgf("Blackfire: Profile uploaded. Unblocking.")
+	logger.Debug().Msg("Blackfire: Profile uploaded. Unblocking.")
 	return
 }
 

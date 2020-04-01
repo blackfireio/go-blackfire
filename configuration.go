@@ -233,7 +233,7 @@ func (c *Configuration) load() error {
 		c.configureFromIniFile()
 		c.configureFromDefaults()
 		if c.err = c.validate(); c.err != nil {
-			c.Logger.Warn().Msg(c.err.Error())
+			c.Logger.Warn().Err(c.err).Msg("Blackfire: Bad configuration")
 		}
 	})
 	return c.err
@@ -242,7 +242,7 @@ func (c *Configuration) load() error {
 func (c *Configuration) validate() error {
 	if c.BlackfireQuery == "" {
 		if c.ClientID == "" || c.ClientToken == "" {
-			return errors.New("Either Blackfire query must be set, or client ID and client token must be set")
+			return errors.New("either BLACKFIRE_QUERY must be set, or client ID and client token must be set")
 		}
 	}
 	return nil

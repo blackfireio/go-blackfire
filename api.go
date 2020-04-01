@@ -18,8 +18,8 @@ var ProfilerErrorAlreadyProfiling = errors.New("A Blackfire profile is currently
 // * Environment variables
 //
 // config will be ignored if nil.
-func Configure(config *Configuration) error {
-	return globalProbe.Configure(config)
+func Configure(config *Configuration) {
+	globalProbe.Configure(config)
 }
 
 // IsProfiling checks if the profiler is running. Only one profiler may run at a time.
@@ -30,39 +30,39 @@ func IsProfiling() bool {
 // ProfileWithCallback profiles the current process for the specified duration.
 // It also connects to the agent and upload the generated profile.
 // and calls the callback in a goroutine (if not null).
-func ProfileWithCallback(duration time.Duration, callback func()) error {
-	return globalProbe.ProfileWithCallback(duration, callback)
+func ProfileWithCallback(duration time.Duration, callback func()) bool {
+	return globalProbe.ProfileWithCallback(duration, callback) == nil
 }
 
 // ProfileFor profiles the current process for the specified duration, then
 // connects to the agent and uploads the generated profile.
-func ProfileFor(duration time.Duration) error {
-	return globalProbe.ProfileFor(duration)
+func ProfileFor(duration time.Duration) bool {
+	return globalProbe.ProfileFor(duration) == nil
 }
 
 // Enable starts profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
-func Enable() error {
-	return globalProbe.Enable()
+func Enable() bool {
+	return globalProbe.Enable() == nil
 }
 
 // Disable stops profiling.
-func Disable() error {
-	return globalProbe.Disable()
+func Disable() bool {
+	return globalProbe.Disable() == nil
 }
 
 // End stops profiling, then uploads the result to the agent in a separate
 // goroutine. You must ensure that the program does not exit before uploading
 // is complete. If you can't make such a guarantee, use EndAndWait() instead.
-func End() error {
-	return globalProbe.End()
+func End() bool {
+	return globalProbe.End() == nil
 }
 
 // EndAndWait ends the current profile, then blocks until the result is uploaded
 // to the agent.
-func EndAndWait() error {
-	return globalProbe.EndAndWait()
+func EndAndWait() bool {
+	return globalProbe.EndAndWait() == nil
 }
 
 // GenerateSubProfileQuery generates a Blackfire query
