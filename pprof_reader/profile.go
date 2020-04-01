@@ -279,6 +279,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	headers["Cost-Dimensions"] = "cpu pmu"
 	headers["graph-root-id"] = profile.biggestImpactEntryPoint()
 	headers["probed-os"] = osInfo.Name
+	headers["profiler-type"] = "statistical"
 	headers["probed-language"] = "go"
 	headers["probed-runtime"] = runtime.Version()
 	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
