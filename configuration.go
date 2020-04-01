@@ -30,28 +30,37 @@ type Configuration struct {
 
 	// Time before dropping an unresponsive agent connection (default 250ms)
 	AgentTimeout time.Duration
+
 	// The socket to use when connecting to the Blackfire agent (default depends on OS)
 	AgentSocket string
+
 	// The Blackfire query string to be sent with any profiles. This is either
 	// provided by the `blackfire run` command in an ENV variable, or acquired
 	// via a signing request to Blackfire. You won't need to set this manually.
 	BlackfireQuery string
+
 	// Client ID to authenticate with the Blackfire API
 	ClientID string
+
 	// Client token to authenticate with the Blackfire API
 	ClientToken string
+
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
 	HTTPEndpoint *url.URL
+
 	// A zerolog Logger (default stderr)
 	Logger *zerolog.Logger
+
 	// The maximum duration of a profile. A profile operation can never exceed
 	// this duration (default 10 minutes).
 	// This guards against runaway profile operations.
 	MaxProfileDuration time.Duration
+
 	// Default rate at which the CPU samples are taken. Values > 500 will likely
 	// exceed the abilities of most environments.
 	// See https://golang.org/src/runtime/pprof/pprof.go#L727
 	DefaultCPUSampleRateHz int
+
 	// If true, dump the original pprof profiles to the current directory whenever
 	// a profile ends.
 	ShouldDumpProfiles bool
