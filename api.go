@@ -50,6 +50,13 @@ func Enable() Ender {
 	return globalProbe.ender
 }
 
+// EnableOnDemand() only profiles when trigerred from an external event (like using blackfire run).
+func EnableOnDemand() Ender {
+	globalProbe.configuration.OnDemandOnly = true
+	globalProbe.Enable()
+	return globalProbe.ender
+}
+
 // Disable stops profiling.
 func Disable() {
 	globalProbe.Disable()
