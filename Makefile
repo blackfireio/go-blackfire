@@ -1,4 +1,9 @@
-COMPOSE=docker-compose --project-directory . -f docker-compose.yml
+project ?= go-blackfire
+
+# Project name must be compatible with docker-compose
+override project := $(shell echo $(project) | tr -d -c '[a-z0-9]' | cut -c 1-55)
+
+COMPOSE=docker-compose --project-directory . -f docker-compose.yml --project-name $(project)
 RUN_DASHBOARD=$(COMPOSE) run --rm --no-deps go_dashboard
 
 .DEFAULT_GOAL := help
