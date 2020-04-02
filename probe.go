@@ -140,7 +140,12 @@ func (p *probe) ProfileFor(duration time.Duration) (err error) {
 	return p.ProfileWithCallback(duration, nil)
 }
 
+func (p *probe) EnableNow() (err error) {
+	return p.ProfileFor(p.configuration.MaxProfileDuration)
+}
+
 func (p *probe) Enable() (err error) {
+	globalProbe.configuration.OnDemandOnly = true
 	return p.ProfileFor(p.configuration.MaxProfileDuration)
 }
 

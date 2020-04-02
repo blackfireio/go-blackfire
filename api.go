@@ -42,17 +42,16 @@ func ProfileFor(duration time.Duration) Ender {
 	return globalProbe.ender
 }
 
-// Enable starts profiling. Profiling will continue until you call StopProfiling().
+// EnableNow starts profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
-func Enable() Ender {
-	globalProbe.Enable()
+func EnableNow() Ender {
+	globalProbe.EnableNow()
 	return globalProbe.ender
 }
 
-// EnableOnDemand() only profiles when trigerred from an external event (like using blackfire run).
-func EnableOnDemand() Ender {
-	globalProbe.configuration.OnDemandOnly = true
+// Enable() only profiles when trigerred from an external event (like using blackfire run).
+func Enable() Ender {
 	globalProbe.Enable()
 	return globalProbe.ender
 }
