@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+
+	"github.com/rs/zerolog"
 )
 
 var headerRegex *regexp.Regexp = regexp.MustCompile(`^([^:]+):(.*)`)
@@ -14,10 +16,13 @@ type agentConnection struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
+	logger *zerolog.Logger
 }
 
-func newAgentConnection(network, address string) (*agentConnection, error) {
-	c := new(agentConnection)
+func newAgentConnection(network, address string, logger *zerolog.Logger) (*agentConnection, error) {
+	c := &agentConnection{
+		logger: logger,
+	}
 	err := c.Init(network, address)
 	return c, err
 }
@@ -40,7 +45,7 @@ func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue stri
 	if line == "\n" {
 		return
 	}
-	Log.Debug().Str("read header", line).Msgf("Recv header")
+	c.logger.Debug().Str("read header", line).Msgf("Recv header")
 	matches := headerRegex.FindAllStringSubmatch(line, -1)
 	if matches == nil {
 		err = fmt.Errorf("Could not parse header: [%s]", line)
@@ -72,7 +77,7 @@ func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
 
 func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
 	line := fmt.Sprintf("%s: %s\n", name, urlEncodedValue)
-	Log.Debug().Str("write header", line).Msgf("Send header")
+	c.logger.Debug().Str("write header", line).Msgf("Send header")
 	_, err := c.writer.WriteString(line)
 	return err
 }
@@ -89,7 +94,7 @@ func (c *agentConnection) WriteMapHeader(name string, values url.Values) error {
 // The headers are assumed to be formatted and URL encoded properly.
 func (c *agentConnection) WriteOrderedHeaders(encodedHeaders []string) error {
 	for _, header := range encodedHeaders {
-		Log.Debug().Str("write header", header).Msgf("Send ordered header")
+		c.logger.Debug().Str("write header", header).Msgf("Send ordered header")
 		if _, err := c.writer.WriteString(header); err != nil {
 			return err
 		}
@@ -116,7 +121,7 @@ func (c *agentConnection) WriteHeaders(nonEncodedHeaders map[string]interface{})
 }
 
 func (c *agentConnection) WriteEndOfHeaders() (err error) {
-	Log.Debug().Msgf("Send end-of-headers")
+	c.logger.Debug().Msgf("Send end-of-headers")
 	if _, err = c.writer.WriteString("\n"); err != nil {
 		return
 	}

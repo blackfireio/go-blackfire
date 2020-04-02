@@ -65,7 +65,7 @@ func (p *Profile) load(auth string) error {
 		return err
 	}
 	request.Header.Add("Authorization", auth)
-	Log.Debug().Msgf("Blackfire: Get profile data for %s", p.UUID)
+	globalProbe.configuration.Logger.Debug().Msgf("Blackfire: Get profile data for %s", p.UUID)
 	client := http.DefaultClient
 	response, err := client.Do(request)
 	if err != nil {

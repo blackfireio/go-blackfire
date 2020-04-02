@@ -3,9 +3,11 @@ package blackfire
 import (
 	"net/url"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	. "gopkg.in/check.v1"
 )
 
@@ -24,6 +26,7 @@ func URL(contents string) *url.URL {
 }
 
 func newConfig() *Configuration {
+	logger := NewLogger(filepath.Join(os.TempDir(), "blackfire-manual.log"), 3)
 	return &Configuration{
 		AgentSocket:    "tcp://127.0.0.1:3333",
 		AgentTimeout:   time.Second * 3,
@@ -31,8 +34,7 @@ func newConfig() *Configuration {
 		ClientID:       "client_id_manual",
 		ClientToken:    "client_token_manual",
 		HTTPEndpoint:   URL("https://blackfire.io/manual"),
-		LogFile:        "/var/blackfire-manual.log",
-		LogLevel:       3,
+		Logger:         &logger,
 	}
 }
 
@@ -44,7 +46,7 @@ func newMixedConfig() *Configuration {
 	config.HTTPEndpoint = nil
 
 	// Use env
-	config.LogFile = ""
+	config.Logger = nil
 
 	// Use ini
 	config.AgentTimeout = 0
@@ -58,7 +60,7 @@ func setupEnv() {
 	os.Setenv("BLACKFIRE_CLIENT_ID", "client_id_env")
 	os.Setenv("BLACKFIRE_CLIENT_TOKEN", "client_token_env")
 	os.Setenv("BLACKFIRE_ENDPOINT", "https://blackfire.io/env")
-	os.Setenv("BLACKFIRE_LOG_FILE", "/var/blackfire-env.log")
+	os.Setenv("BLACKFIRE_LOG_FILE", "stderr")
 	os.Setenv("BLACKFIRE_LOG_LEVEL", "2")
 }
 
@@ -83,8 +85,7 @@ func newConfiguration(config *Configuration) *Configuration {
 func (s *BlackfireSuite) TestConfigurationDefaults(c *C) {
 	config := newConfiguration(nil)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
-	c.Assert("stderr", Equals, config.LogFile)
-	c.Assert(1, Equals, config.LogLevel)
+	c.Assert(zerolog.ErrorLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 }
 
@@ -106,8 +107,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert("client_id_env", Equals, config.ClientID)
 	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io/env", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(2, Equals, config.LogLevel)
+	c.Assert(zerolog.WarnLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
 	setupEnv()
@@ -117,8 +117,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert("client_id_env", Equals, config.ClientID)
 	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io/env", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(2, Equals, config.LogLevel)
+	c.Assert(zerolog.WarnLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Second*1, Equals, config.AgentTimeout)
 }
 
@@ -130,8 +129,7 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert("client_id_manual", Equals, config.ClientID)
 	c.Assert("client_token_manual", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io/manual", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-manual.log", Equals, config.LogFile)
-	c.Assert(3, Equals, config.LogLevel)
+	c.Assert(zerolog.InfoLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
 
 	config = newConfig()
@@ -142,8 +140,7 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert("client_id_manual", Equals, config.ClientID)
 	c.Assert("client_token_manual", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io/manual", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-manual.log", Equals, config.LogFile)
-	c.Assert(3, Equals, config.LogLevel)
+	c.Assert(zerolog.InfoLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
 }
 
@@ -158,8 +155,7 @@ func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
 	c.Assert("client_id_env", Equals, config.ClientID)
 	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(2, Equals, config.LogLevel)
+	c.Assert(zerolog.WarnLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
 	setupEnv()
@@ -171,7 +167,6 @@ func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
 	c.Assert("client_id_env", Equals, config.ClientID)
 	c.Assert("client_token_env", Equals, config.ClientToken)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
-	c.Assert("/var/blackfire-env.log", Equals, config.LogFile)
-	c.Assert(2, Equals, config.LogLevel)
+	c.Assert(zerolog.WarnLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Second*1, Equals, config.AgentTimeout)
 }
