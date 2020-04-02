@@ -25,10 +25,6 @@ type Configuration struct {
 	// Defaults to ~/.blackfire.ini
 	ConfigFile string
 
-	// Disables the profiler unless the BLACKFIRE_QUERY env variable is set.
-	// When the profiler is disabled, all API calls become no-ops.
-	OnDemandOnly bool
-
 	// Time before dropping an unresponsive agent connection (default 250ms)
 	AgentTimeout time.Duration
 
@@ -66,12 +62,16 @@ type Configuration struct {
 	// a profile ends.
 	ShouldDumpProfiles bool
 
+	// Disables the profiler unless the BLACKFIRE_QUERY env variable is set.
+	// When the profiler is disabled, all API calls become no-ops.
+	onDemandOnly bool
+
 	loader sync.Once
 	err    error
 }
 
 func (c *Configuration) canProfile() bool {
-	if c.BlackfireQuery == "" && c.OnDemandOnly {
+	if c.BlackfireQuery == "" && c.onDemandOnly {
 		return false
 	}
 	return true

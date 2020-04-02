@@ -140,7 +140,7 @@ func (p *probe) EnableNow() (err error) {
 }
 
 func (p *probe) Enable() (err error) {
-	globalProbe.configuration.OnDemandOnly = true
+	globalProbe.configuration.onDemandOnly = true
 	return p.EnableNowFor(p.configuration.MaxProfileDuration)
 }
 
