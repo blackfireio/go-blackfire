@@ -3,9 +3,11 @@ package blackfire
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -58,9 +60,9 @@ type Configuration struct {
 	// See https://golang.org/src/runtime/pprof/pprof.go#L727
 	DefaultCPUSampleRateHz int
 
-	// If true, dump the original pprof profiles to the current directory whenever
+	// If not empty, dump the original pprof profiles to this directory whenever
 	// a profile ends.
-	ShouldDumpProfiles bool
+	PProfDumpDir string
 
 	// Disables the profiler unless the BLACKFIRE_QUERY env variable is set.
 	// When the profiler is disabled, all API calls become no-ops.
@@ -218,8 +220,13 @@ func (c *Configuration) configureFromEnv() {
 		}
 	}
 
-	if v := c.readEnvVar("BLACKFIRE_DUMP_PPROF"); v == "true" {
-		c.ShouldDumpProfiles = true
+	if v := c.readEnvVar("BLACKFIRE_PPROF_DUMP_DIR"); v != "" {
+		absPath, err := filepath.Abs(v)
+		if err != nil {
+			c.Logger.Error().Msgf("Blackfire: Unable to set pprof dump dir to %v: %v", v, err)
+		} else {
+			c.PProfDumpDir = absPath
+		}
 	}
 }
 
@@ -243,6 +250,32 @@ func (c *Configuration) validate() error {
 	if c.BlackfireQuery == "" {
 		if c.ClientID == "" || c.ClientToken == "" {
 			return errors.New("either BLACKFIRE_QUERY must be set, or client ID and client token must be set")
+		}
+	}
+
+	if c.PProfDumpDir != "" {
+		info, err := os.Stat(c.PProfDumpDir)
+		if err != nil {
+			return fmt.Errorf("Cannot dump pprof files to %v: %v", c.PProfDumpDir, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("Cannot dump pprof files to %v: not a directory", c.PProfDumpDir)
+		}
+
+		// There's no 100% portable way to check for writability, so we just create
+		// a temp zero-byte file and see if it succeeds.
+		exePath, err := os.Executable()
+		if err != nil {
+			exePath = "go-unknown"
+		} else {
+			exePath = path.Base(exePath)
+		}
+		testPath := path.Join(c.PProfDumpDir, exePath+"-writability-test")
+		// Delete it before starting, and make sure it gets deleted after
+		os.Remove(testPath)
+		defer os.Remove(testPath)
+		if err = ioutil.WriteFile(testPath, []byte{}, 0644); err != nil {
+			return fmt.Errorf("Cannot dump pprof files to %v: directory does not seem writable: %v", c.PProfDumpDir, err)
 		}
 	}
 	return nil

@@ -3,10 +3,48 @@ package pprof_reader
 import (
 	"bufio"
 	"bytes"
+
 	// "io/ioutil"
 	// "os"
-	// "testing"
+	"testing"
 )
+
+func TestBaseName(t *testing.T) {
+	path := "test.exe"
+	expected := "test"
+	actual := getBasename(path)
+	if actual != expected {
+		t.Errorf("Expected [%v] but got [%v]", expected, actual)
+	}
+
+	path = "test."
+	expected = "test"
+	actual = getBasename(path)
+	if actual != expected {
+		t.Errorf("Expected [%v] but got [%v]", expected, actual)
+	}
+
+	path = ".exe"
+	expected = ""
+	actual = getBasename(path)
+	if actual != expected {
+		t.Errorf("Expected [%v] but got [%v]", expected, actual)
+	}
+
+	path = "test"
+	expected = "test"
+	actual = getBasename(path)
+	if actual != expected {
+		t.Errorf("Expected [%v] but got [%v]", expected, actual)
+	}
+
+	path = "test.test.exe"
+	expected = "test.test"
+	actual = getBasename(path)
+	if actual != expected {
+		t.Errorf("Expected [%v] but got [%v]", expected, actual)
+	}
+}
 
 func toLineSet(data []byte) map[string]bool {
 	result := make(map[string]bool)

@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
+	"path"
 	"runtime"
 	"sort"
 	"strconv"
@@ -232,15 +233,62 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 	return profile, nil
 }
 
-func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer) (err error) {
+func getBasename(path string) string {
+	for i := len(path) - 1; i >= 0 && path[i] != '/'; i-- {
+		if path[i] == '.' {
+			return path[:i]
+		}
+	}
+	return path
+}
+
+func getExeName() string {
+	name, err := os.Executable()
+	if err != nil {
+		return "go-unknown"
+	}
+	return getBasename(path.Base(name))
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func getCpuProfileDumpPath(pathPrefix string, index int) string {
+	return fmt.Sprintf("%v-cpu-%v.pprof", pathPrefix, index)
+}
+
+func getMemProfileDumpPath(pathPrefix string, index int) string {
+	return fmt.Sprintf("%v-mem-%v.pprof", pathPrefix, index)
+}
+
+func getDumpStartIndex(pathPrefix string) int {
+	index := 1
+	for {
+		if !fileExists(getCpuProfileDumpPath(pathPrefix, index)) &&
+			!fileExists(getMemProfileDumpPath(pathPrefix, index)) {
+			return index
+		}
+		index++
+	}
+}
+
+// DumpProfiles dumps the raw golang pprof files to the specified directory.
+// It uses the naming scheme exename-type-index.pprof, starting at the next
+// index after the last one found in the specified directory.
+func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer, dstDir string) (err error) {
+	pathPrefix := path.Join(dstDir, getExeName())
+	startIndex := getDumpStartIndex(pathPrefix)
+
 	for i, buff := range cpuBuffers {
-		filename := fmt.Sprintf("cpu-%d.pprof", i+1)
+		filename := getCpuProfileDumpPath(pathPrefix, startIndex+i)
 		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
 			return
 		}
 	}
 	for i, buff := range memBuffers {
-		filename := fmt.Sprintf("mem-%d.pprof", i+1)
+		filename := getMemProfileDumpPath(pathPrefix, startIndex+i)
 		if err = ioutil.WriteFile(filename, buff.Bytes(), 0644); err != nil {
 			return
 		}
