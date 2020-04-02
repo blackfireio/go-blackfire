@@ -107,7 +107,7 @@ func DisableHandler(w http.ResponseWriter, r *http.Request) {
 func EndHandler(w http.ResponseWriter, r *http.Request) {
 	logger := globalProbe.configuration.Logger
 	logger.Info().Msgf("Blackfire (HTTP): End profiling")
-	if err := globalProbe.EndAndWait(); err != nil {
+	if err := globalProbe.End(); err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "End error", Detail: err.Error()})
 	} else {
 		writeJsonStatus(w)

@@ -67,7 +67,7 @@ func EndOnSignal(sig os.Signal) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		logger.Info().Msgf("Blackfire (%s): End profile", sig)
-		if err := globalProbe.End(); err != nil {
+		if err := globalProbe.EndNoWait(); err != nil {
 			logger.Error().Msgf("Blackfire (EndOnSignal): %v", err)
 		}
 	})

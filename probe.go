@@ -47,7 +47,7 @@ type probe struct {
 
 type Ender interface {
 	End()
-	EndAndWait()
+	EndNoWait()
 }
 
 type ender struct {
@@ -58,8 +58,8 @@ func (e *ender) End() {
 	e.probe.End()
 }
 
-func (e *ender) EndAndWait() {
-	e.probe.EndAndWait()
+func (e *ender) EndNoWait() {
+	e.probe.EndNoWait()
 }
 
 func newProbe() *probe {
@@ -174,7 +174,7 @@ func (p *probe) Disable() (err error) {
 	return
 }
 
-func (p *probe) End() (err error) {
+func (p *probe) EndNoWait() (err error) {
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -204,7 +204,7 @@ func (p *probe) End() (err error) {
 	return
 }
 
-func (p *probe) EndAndWait() (err error) {
+func (p *probe) End() (err error) {
 	if err = p.configuration.load(); err != nil {
 		return
 	}

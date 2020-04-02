@@ -62,17 +62,17 @@ func Disable() {
 	globalProbe.Disable()
 }
 
-// End stops profiling, then uploads the result to the agent in a separate
-// goroutine. You must ensure that the program does not exit before uploading
-// is complete. If you can't make such a guarantee, use EndAndWait() instead.
+// End ends the current profile, then blocks until the result is uploaded
+// to the agent.
 func End() {
 	globalProbe.End()
 }
 
-// EndAndWait ends the current profile, then blocks until the result is uploaded
-// to the agent.
-func EndAndWait() {
-	globalProbe.EndAndWait()
+// EndNoWait stops profiling, then uploads the result to the agent in a separate
+// goroutine. You must ensure that the program does not exit before uploading
+// is complete. If you can't make such a guarantee, use End() instead.
+func EndNoWait() {
+	globalProbe.EndNoWait()
 }
 
 // GenerateSubProfileQuery generates a Blackfire query
