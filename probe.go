@@ -42,11 +42,32 @@ type probe struct {
 	memProfileBuffers     []*bytes.Buffer
 	profileEndCallback    func()
 	cpuSampleRate         int
+	ender                 Ender
+}
+
+type Ender interface {
+	End()
+	EndAndWait()
+}
+
+type ender struct {
+	probe *probe
+}
+
+func (e *ender) End() {
+	e.probe.End()
+}
+
+func (e *ender) EndAndWait() {
+	e.probe.EndAndWait()
 }
 
 func newProbe() *probe {
 	p := &probe{
 		configuration: &Configuration{},
+	}
+	p.ender = &ender{
+		probe: p,
 	}
 	p.startTriggerRearmLoop()
 	return p

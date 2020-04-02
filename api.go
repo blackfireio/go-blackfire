@@ -30,39 +30,42 @@ func IsProfiling() bool {
 // ProfileWithCallback profiles the current process for the specified duration.
 // It also connects to the agent and upload the generated profile.
 // and calls the callback in a goroutine (if not null).
-func ProfileWithCallback(duration time.Duration, callback func()) bool {
-	return globalProbe.ProfileWithCallback(duration, callback) == nil
+func ProfileWithCallback(duration time.Duration, callback func()) Ender {
+	globalProbe.ProfileWithCallback(duration, callback)
+	return globalProbe.ender
 }
 
 // ProfileFor profiles the current process for the specified duration, then
 // connects to the agent and uploads the generated profile.
-func ProfileFor(duration time.Duration) bool {
-	return globalProbe.ProfileFor(duration) == nil
+func ProfileFor(duration time.Duration) Ender {
+	globalProbe.ProfileFor(duration)
+	return globalProbe.ender
 }
 
 // Enable starts profiling. Profiling will continue until you call StopProfiling().
 // If you forget to stop profiling, it will automatically stop after the maximum
 // allowed duration (DefaultMaxProfileDuration or whatever you set via SetMaxProfileDuration()).
-func Enable() bool {
-	return globalProbe.Enable() == nil
+func Enable() Ender {
+	globalProbe.Enable()
+	return globalProbe.ender
 }
 
 // Disable stops profiling.
-func Disable() bool {
-	return globalProbe.Disable() == nil
+func Disable() {
+	globalProbe.Disable()
 }
 
 // End stops profiling, then uploads the result to the agent in a separate
 // goroutine. You must ensure that the program does not exit before uploading
 // is complete. If you can't make such a guarantee, use EndAndWait() instead.
-func End() bool {
-	return globalProbe.End() == nil
+func End() {
+	globalProbe.End()
 }
 
 // EndAndWait ends the current profile, then blocks until the result is uploaded
 // to the agent.
-func EndAndWait() bool {
-	return globalProbe.EndAndWait() == nil
+func EndAndWait() {
+	globalProbe.EndAndWait()
 }
 
 // GenerateSubProfileQuery generates a Blackfire query
