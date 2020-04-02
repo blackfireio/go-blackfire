@@ -82,9 +82,7 @@ func EnableHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Info().Msgf("Blackfire (HTTP): Enable profiling")
 	}
-	err = globalProbe.ProfileWithCallback(duration, func() {
-		logger.Info().Msgf("Blackfire (HTTP): Profile complete")
-	})
+	err = globalProbe.EnableNowFor(duration)
 	if err != nil {
 		writeJsonError(w, &problem{Status: 500, Title: "Enable error", Detail: err.Error()})
 	} else {

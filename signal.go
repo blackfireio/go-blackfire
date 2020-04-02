@@ -21,9 +21,7 @@ func EnableOnSignal(sig os.Signal, duration time.Duration) (err error) {
 
 	callFuncOnSignal(sig, func() {
 		logger.Info().Msgf("Blackfire (%s): Profiling for %.0f seconds", sig, float64(duration)/1000000000)
-		if err := globalProbe.ProfileWithCallback(duration, func() {
-			logger.Info().Msgf("Blackfire (%s): Profile complete", sig)
-		}); err != nil {
+		if err := globalProbe.EnableNowFor(duration); err != nil {
 			logger.Error().Msgf("Blackfire (EnableOnSignal): %v", err)
 		}
 	})

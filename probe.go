@@ -90,7 +90,7 @@ func (p *probe) IsProfiling() bool {
 	return p.currentState == profilerStateEnabled || p.currentState == profilerStateSending
 }
 
-func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (err error) {
+func (p *probe) EnableNowFor(duration time.Duration) (err error) {
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -124,7 +124,6 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 		return
 	}
 
-	p.profileEndCallback = callback
 	channel := p.profileDisableTrigger
 	shouldEndProfile := false
 
@@ -136,17 +135,13 @@ func (p *probe) ProfileWithCallback(duration time.Duration, callback func()) (er
 	return
 }
 
-func (p *probe) ProfileFor(duration time.Duration) (err error) {
-	return p.ProfileWithCallback(duration, nil)
-}
-
 func (p *probe) EnableNow() (err error) {
-	return p.ProfileFor(p.configuration.MaxProfileDuration)
+	return p.EnableNowFor(p.configuration.MaxProfileDuration)
 }
 
 func (p *probe) Enable() (err error) {
 	globalProbe.configuration.OnDemandOnly = true
-	return p.ProfileFor(p.configuration.MaxProfileDuration)
+	return p.EnableNowFor(p.configuration.MaxProfileDuration)
 }
 
 func (p *probe) Disable() (err error) {

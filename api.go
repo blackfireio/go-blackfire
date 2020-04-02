@@ -27,18 +27,10 @@ func IsProfiling() bool {
 	return globalProbe.IsProfiling()
 }
 
-// ProfileWithCallback profiles the current process for the specified duration.
-// It also connects to the agent and upload the generated profile.
-// and calls the callback in a goroutine (if not null).
-func ProfileWithCallback(duration time.Duration, callback func()) Ender {
-	globalProbe.ProfileWithCallback(duration, callback)
-	return globalProbe.ender
-}
-
-// ProfileFor profiles the current process for the specified duration, then
+// EnableNowFor profiles the current process for the specified duration, then
 // connects to the agent and uploads the generated profile.
-func ProfileFor(duration time.Duration) Ender {
-	globalProbe.ProfileFor(duration)
+func EnableNowFor(duration time.Duration) Ender {
+	globalProbe.EnableNowFor(duration)
 	return globalProbe.ender
 }
 
