@@ -82,7 +82,29 @@ func newConfiguration(config *Configuration) *Configuration {
 	return config
 }
 
+func setIgnoreIni() {
+	os.Setenv("BLACKFIRE_INTERNAL_IGNORE_INI", "1")
+}
+
+func unsetIgnoreIni() {
+	os.Unsetenv("BLACKFIRE_INTERNAL_IGNORE_INI")
+}
+
+func (s *BlackfireSuite) TestConfigurationPrecedence(c *C) {
+	setIgnoreIni()
+	defer unsetIgnoreIni()
+	defer unsetEnv()
+
+	os.Setenv("BLACKFIRE_AGENT_SOCKET", "tcp://127.0.0.1:2222")
+
+	config := newConfiguration(&Configuration{AgentSocket: "tcp://127.0.0.1:2424"})
+
+	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
+}
+
 func (s *BlackfireSuite) TestConfigurationDefaults(c *C) {
+	setIgnoreIni()
+	defer unsetIgnoreIni()
 	config := newConfiguration(nil)
 	c.Assert("https://blackfire.io", Equals, config.HTTPEndpoint.String())
 	c.Assert(zerolog.ErrorLevel, Equals, config.Logger.GetLevel())
@@ -99,6 +121,7 @@ func (s *BlackfireSuite) TestConfigurationIniFile(c *C) {
 
 func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	setupEnv()
+	setIgnoreIni()
 	defer unsetEnv()
 
 	config := newConfiguration(nil)
@@ -111,6 +134,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
 	setupEnv()
+	unsetIgnoreIni()
 	config = newConfiguration(&Configuration{ConfigFile: "fixtures/test_blackfire.ini"})
 	c.Assert("tcp://127.0.0.1:2222", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_env", Equals, config.BlackfireQuery)
@@ -123,6 +147,7 @@ func (s *BlackfireSuite) TestConfigurationEnv(c *C) {
 
 func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	config := newConfig()
+	setIgnoreIni()
 	config.load()
 	c.Assert("tcp://127.0.0.1:3333", Equals, config.AgentSocket)
 	c.Assert("blackfire_query_manual", Equals, config.BlackfireQuery)
@@ -132,6 +157,7 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 	c.Assert(zerolog.InfoLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Second*3, Equals, config.AgentTimeout)
 
+	unsetIgnoreIni()
 	config = newConfig()
 	config.ConfigFile = "fixtures/test_blackfire.ini"
 	config.load()
@@ -145,6 +171,7 @@ func (s *BlackfireSuite) TestConfigurationManual(c *C) {
 }
 
 func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
+	setIgnoreIni()
 	setupEnv()
 	defer unsetEnv()
 
@@ -158,6 +185,7 @@ func (s *BlackfireSuite) TestConfigurationMixed(c *C) {
 	c.Assert(zerolog.WarnLevel, Equals, config.Logger.GetLevel())
 	c.Assert(time.Millisecond*250, Equals, config.AgentTimeout)
 
+	unsetIgnoreIni()
 	setupEnv()
 	config = newMixedConfig()
 	config.ConfigFile = "fixtures/test2_blackfire.ini"

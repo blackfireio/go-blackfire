@@ -237,7 +237,10 @@ func (c *Configuration) load() error {
 			c.Logger = &logger
 		}
 		c.configureFromEnv()
-		c.configureFromIniFile()
+		// Used for test purposes
+		if "1" != os.Getenv("BLACKFIRE_INTERNAL_IGNORE_INI") {
+			c.configureFromIniFile()
+		}
 		c.configureFromDefaults()
 		if c.err = c.validate(); c.err != nil {
 			c.Logger.Warn().Err(c.err).Msg("Blackfire: Bad configuration")
