@@ -266,7 +266,7 @@ func (p *probe) End() (err error) {
 
 	logger.Debug().Msg("Blackfire: Ending the current profile and blocking until it's uploaded")
 	if err = p.endProfile(); err != nil {
-		logger.Error().Msgf("Blackfire (end profile): %v", err)
+		logger.Error().Int("code", 102).Msgf("Blackfire (end profile): %v", err)
 		return
 	}
 	logger.Debug().Msg("Blackfire: Profile uploaded. Unblocking.")
@@ -509,7 +509,7 @@ func (p *probe) onProfileDisableTriggered(shouldEndProfile bool, callback func()
 
 	if shouldEndProfile {
 		if err := p.endProfile(); err != nil {
-			logger.Error().Msgf("Blackfire (end profile): %v", err)
+			logger.Error().Int("code", 101).Msgf("Blackfire (end profile): %v", err)
 		}
 	} else {
 		if err := p.disableProfiling(); err != nil {
