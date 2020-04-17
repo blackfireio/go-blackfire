@@ -114,6 +114,7 @@ type Profile struct {
 	EntryPoints             map[string]*EntryPoint
 	EntryPointsLargeToSmall []*EntryPoint
 	CpuSampleRate           int
+	AllCPUSamples           [][]string
 }
 
 func NewProfile() *Profile {
@@ -141,6 +142,9 @@ func (p *Profile) AddStatisticalSample(stack []string, count int64, wtValue int6
 		p.EntryPoints[entryPointName] = entryPoint
 	}
 	entryPoint.AddStatisticalSample(stack, count, wtValue, memValue)
+	if wtValue > 0 {
+		p.AllCPUSamples = append(p.AllCPUSamples, stack)
+	}
 }
 
 func (p *Profile) Finish() {
@@ -346,6 +350,84 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 		}
 	}
 
+	index := 0
+	seen := make(map[string]*xxx)
+	lastStack := profile.AllCPUSamples[0]
+	for i := 1; i < len(lastStack); i++ {
+		entry := &xxx{
+			Parent: lastStack[i-1],
+			Name:   lastStack[i],
+			Start:  0,
+			End:    1,
+			Index:  index,
+		}
+		seen[entry.Name] = entry
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0 0\n", entry.Index, entry.Parent, entry.Name))
+		index++
+	}
+
+	fmt.Printf("### Initial seen: %v\n", seen)
+
+	fmt.Printf("###### Initial Sample length %v\n", len(lastStack))
+	fmt.Printf("#### Initial Stack = %v\n", lastStack)
+
+	lastMatchIndex := 0
+	for i := 1; i < len(profile.AllCPUSamples); i++ {
+		stack := profile.AllCPUSamples[i]
+		lastLength := len(lastStack)
+		nowLength := len(stack)
+		lowestLength := lastLength
+		if nowLength < lowestLength {
+			lowestLength = nowLength
+		}
+		fmt.Printf("###### Sample %v, nl %v, ll %v, low %v\n", i, nowLength, lastLength, lowestLength)
+		fmt.Printf("#### Stack = %v\n", stack)
+		lastMatchIndex = 0
+		for j := 1; j < lowestLength; j++ {
+			if stack[j] != lastStack[j] {
+				fmt.Printf("#### %v [%v] != [%v]\n", j, stack[j], lastStack[j])
+				break
+			}
+			entry := seen[stack[j]]
+			entry.End++
+			lastMatchIndex = j
+			fmt.Printf("### Increment Entry %v to %v\n", entry.Name, entry.End)
+		}
+		if lastMatchIndex < lastLength-1 {
+			fmt.Printf("##### last match %v < last stack %v. Removing entries\n", lastMatchIndex, lastLength-1)
+			for j := lastMatchIndex + 1; j < lastLength; j++ {
+				fmt.Printf("### Remove Entry at %v = %v\n", j, lastStack[j])
+				entry := seen[lastStack[j]]
+				bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+			}
+		}
+		if lastMatchIndex < nowLength-1 {
+			fmt.Printf("##### last match %v < now stack %v. Adding entries\n", lastMatchIndex, nowLength-1)
+			for j := lastMatchIndex + 1; j < nowLength; j++ {
+				fmt.Printf("### Add Entry at %v = %v\n", j, stack[j])
+				entry := &xxx{
+					Parent: stack[j-1],
+					Name:   stack[j],
+					Start:  0,
+					End:    1,
+					Index:  index,
+				}
+				seen[entry.Name] = entry
+				bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0 0\n", entry.Index, entry.Parent, entry.Name))
+				index++
+			}
+		}
+
+		lastStack = stack
+	}
+
+	for i := lastMatchIndex; i >= 1; i-- {
+		fmt.Printf("### Remove Entry at %v = %v\n", i, lastStack[i])
+		entry := seen[lastStack[i]]
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+	}
+
+	// End of headers
 	if _, err := bufW.WriteString("\n"); err != nil {
 		return err
 	}
@@ -359,4 +441,12 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	}
 
 	return bufW.Flush()
+}
+
+type xxx struct {
+	Parent string
+	Name   string
+	Start  uint64
+	End    uint64
+	Index  int
 }

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 
+	"github.com/kstenerud/go-loggedio"
 	"github.com/rs/zerolog"
 )
 
@@ -31,6 +32,7 @@ func (c *agentConnection) Init(network, address string) (err error) {
 	if c.conn, err = net.Dial(network, address); err != nil {
 		return
 	}
+	c.conn = loggedio.StringToLog(c.conn, "R %v", "W %v", "E %v", "C")
 
 	c.reader = bufio.NewReader(c.conn)
 	c.writer = bufio.NewWriter(c.conn)
@@ -67,6 +69,8 @@ func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
 		if name == "" {
 			break
 		}
+		// TODO: This needs to return url.Values directly so that multiple headers
+		// with the same name can be added to the array
 		response[name], err = url.ParseQuery(urlEncodedValue)
 		if err != nil {
 			return nil, err

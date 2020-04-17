@@ -29,6 +29,7 @@ type agentClient struct {
 	serverToken         string
 	firstBlackfireQuery string
 	rawBlackfireQuery   string
+	includeTimespan     bool
 	links               []*linksMap
 	profiles            []*Profile
 	logger              *zerolog.Logger
@@ -51,6 +52,7 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 		signingEndpoint:     signingEndpoint,
 		signingAuth:         fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
 		firstBlackfireQuery: configuration.BlackfireQuery,
+		includeTimespan:     isTimespanFlagSet(configuration.BlackfireQuery),
 		links:               make([]*linksMap, 10),
 		profiles:            make([]*Profile, 10),
 		logger:              configuration.Logger,
@@ -68,11 +70,12 @@ func (c *agentClient) CurrentBlackfireQuery() (string, error) {
 		c.firstBlackfireQuery = ""
 		return c.rawBlackfireQuery, nil
 	}
-	query, err := c.createRequest()
+	bfQuery, err := c.sendSigningRequest()
 	if err != nil {
 		return "", err
 	}
-	c.rawBlackfireQuery = query
+	c.rawBlackfireQuery = bfQuery
+	c.includeTimespan = isTimespanFlagSet(bfQuery)
 	return c.rawBlackfireQuery, nil
 }
 
@@ -100,6 +103,9 @@ func (c *agentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	builder.WriteString(c.getGoVersion())
 	if hasBlackfireYaml {
 		builder.WriteString(", blackfire_yml")
+	}
+	if c.includeTimespan {
+		builder.WriteString(", timespan")
 	}
 	return builder.String()
 }
@@ -240,7 +246,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	return
 }
 
-func (c *agentClient) createRequest() (string, error) {
+func (c *agentClient) sendSigningRequest() (blackfireQuery string, err error) {
 	var response *http.Response
 	c.logger.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
 	request, err := http.NewRequest("POST", c.signingEndpoint.String(), nil)
@@ -321,4 +327,10 @@ func getProfileOSHeaderValue() (values url.Values, err error) {
 	}
 
 	return values, nil
+}
+
+func isTimespanFlagSet(blackfireQuery string) bool {
+	// return strings.Contains(blackfireQuery, "flag_timespan=1")
+	// TODO
+	return true
 }
