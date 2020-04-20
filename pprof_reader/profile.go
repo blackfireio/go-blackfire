@@ -328,11 +328,15 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
 
 	headers := make(map[string]string)
-	headers["Cost-Dimensions"] = "cpu pmu"
+	// TODO: reverse this temporary fix
+	// headers["Cost-Dimensions"] = "cpu pmu"
+	headers["Cost-Dimensions"] = "wt pmu"
 	headers["graph-root-id"] = profile.biggestImpactEntryPoint()
 	headers["probed-os"] = osInfo.Name
 	headers["profiler-type"] = "statistical"
-	headers["probed-language"] = "go"
+	// TODO: reverse this temporary fix
+	// headers["probed-language"] = "go"
+	headers["probed-language"] = "php"
 	headers["probed-runtime"] = runtime.Version()
 	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
 	// headers["Profile-Title"] = profileTitle
@@ -350,23 +354,29 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 		}
 	}
 
+	fmt.Printf("### Sample stack count: %v\n", len(profile.AllCPUSamples))
+
+	var entriesByEndTime []*timelineEntry
+
 	index := 0
-	seen := make(map[string]*xxx)
+	activeEntries := make(map[string]*timelineEntry)
 	lastStack := profile.AllCPUSamples[0]
 	for i := 1; i < len(lastStack); i++ {
-		entry := &xxx{
+		entry := &timelineEntry{
 			Parent: lastStack[i-1],
 			Name:   lastStack[i],
 			Start:  0,
 			End:    1,
 			Index:  index,
 		}
-		seen[entry.Name] = entry
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
+		activeEntries[entry.Name] = entry
+		// TODO: reverse this temporary fix
+		// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
+		// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//1 0\n", entry.Index, entry.Parent, entry.Name))
 		index++
 	}
 
-	fmt.Printf("### Initial seen: %v\n", seen)
+	fmt.Printf("### Initial seen: %v\n", activeEntries)
 
 	fmt.Printf("###### Initial Sample length %v\n", len(lastStack))
 	fmt.Printf("#### Initial Stack = %v\n", lastStack)
@@ -388,7 +398,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 				fmt.Printf("#### %v [%v] != [%v]\n", j, stack[j], lastStack[j])
 				break
 			}
-			entry := seen[stack[j]]
+			entry := activeEntries[stack[j]]
 			entry.End++
 			lastMatchIndex = j
 			fmt.Printf("### Increment Entry %v to %v\n", entry.Name, entry.End)
@@ -397,23 +407,28 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 			fmt.Printf("##### last match %v < last stack %v. Removing entries\n", lastMatchIndex, lastLength-1)
 			for j := lastMatchIndex + 1; j < lastLength; j++ {
 				fmt.Printf("### Remove Entry at %v = %v\n", j, lastStack[j])
-				entry := seen[lastStack[j]]
-				bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+				name := lastStack[j]
+				entry := activeEntries[name]
+				activeEntries[name] = nil
+				entriesByEndTime = append(entriesByEndTime, entry)
+				// bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
 			}
 		}
 		if lastMatchIndex < nowLength-1 {
 			fmt.Printf("##### last match %v < now stack %v. Adding entries\n", lastMatchIndex, nowLength-1)
 			for j := lastMatchIndex + 1; j < nowLength; j++ {
 				fmt.Printf("### Add Entry at %v = %v\n", j, stack[j])
-				entry := &xxx{
+				entry := &timelineEntry{
 					Parent: stack[j-1],
 					Name:   stack[j],
-					Start:  0,
-					End:    1,
+					Start:  uint64(i),
+					End:    uint64(i + 1),
 					Index:  index,
 				}
-				seen[entry.Name] = entry
-				bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
+				activeEntries[entry.Name] = entry
+				// TODO: reverse this temporary fix
+				// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.Start*100))
+				// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//1 0\n", entry.Index, entry.Parent, entry.Name))
 				index++
 			}
 		}
@@ -423,8 +438,16 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 
 	for i := lastMatchIndex; i >= 1; i-- {
 		fmt.Printf("### Remove Entry at %v = %v\n", i, lastStack[i])
-		entry := seen[lastStack[i]]
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+		name := lastStack[i]
+		entry := activeEntries[name]
+		activeEntries[name] = nil
+		entriesByEndTime = append(entriesByEndTime, entry)
+		// bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+	}
+
+	for i, entry := range entriesByEndTime {
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", i, entry.Parent, entry.Name, entry.Start*100+1))
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", i, entry.Parent, entry.Name, entry.End*100+1))
 	}
 
 	// End of headers
@@ -443,7 +466,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	return bufW.Flush()
 }
 
-type xxx struct {
+type timelineEntry struct {
 	Parent string
 	Name   string
 	Start  uint64
