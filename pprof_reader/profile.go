@@ -361,7 +361,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	index := 0
 	activeEntries := make(map[string]*timelineEntry)
 	lastStack := profile.AllCPUSamples[0]
-	for i := 1; i < len(lastStack); i++ {
+	for i := len(lastStack) - 1; i >= 1; i-- {
 		entry := &timelineEntry{
 			Parent: lastStack[i-1],
 			Name:   lastStack[i],
