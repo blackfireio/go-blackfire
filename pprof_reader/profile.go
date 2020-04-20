@@ -362,7 +362,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 			Index:  index,
 		}
 		seen[entry.Name] = entry
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0 0\n", entry.Index, entry.Parent, entry.Name))
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
 		index++
 	}
 
@@ -398,7 +398,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 			for j := lastMatchIndex + 1; j < lastLength; j++ {
 				fmt.Printf("### Remove Entry at %v = %v\n", j, lastStack[j])
 				entry := seen[lastStack[j]]
-				bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+				bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
 			}
 		}
 		if lastMatchIndex < nowLength-1 {
@@ -413,7 +413,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 					Index:  index,
 				}
 				seen[entry.Name] = entry
-				bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0 0\n", entry.Index, entry.Parent, entry.Name))
+				bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
 				index++
 			}
 		}
@@ -424,7 +424,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) error {
 	for i := lastMatchIndex; i >= 1; i-- {
 		fmt.Printf("### Remove Entry at %v = %v\n", i, lastStack[i])
 		entry := seen[lastStack[i]]
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
+		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
 	}
 
 	// End of headers
