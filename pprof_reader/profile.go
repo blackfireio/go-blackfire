@@ -18,28 +18,57 @@ import (
 	"github.com/blackfireio/osinfo"
 )
 
-// Edge represents an edge of the graph, which is a call from one function to another.
-type Edge struct {
-	Count                   int64
-	CumulativeWalltimeValue int64
-	CumulativeMemValue      int64
-	FromFunction            string
-	ToFunction              string
+type Function struct {
+	ID   uint64
+	Name string
 }
 
-func NewEdge(fromFunction string, toFunction string) *Edge {
+func (f *Function) String() string {
+	return f.Name
+}
+
+func newFunctionFromPProf(f *pprof.Function) *Function {
+	return &Function{
+		ID:   f.ID,
+		Name: f.Name,
+	}
+}
+
+// Edge represents an edge of the graph, which is a call from one function to another.
+type Edge struct {
+	Count                  int64
+	CumulativeCPUTimeValue int64
+	CumulativeMemValue     int64
+	FromFunction           *Function
+	ToFunction             *Function
+	Name                   string
+}
+
+func generateEdgeName(fromFunction, toFunction *Function) string {
+	if fromFunction != nil {
+		return fmt.Sprintf("%s==>%s", fromFunction.Name, toFunction.Name)
+	}
+	return toFunction.Name
+}
+
+func NewEdge(fromFunction, toFunction *Function) *Edge {
 	return &Edge{
 		FromFunction: fromFunction,
 		ToFunction:   toFunction,
+		Name:         generateEdgeName(fromFunction, toFunction),
 	}
+}
+
+func (e *Edge) String() string {
+	return e.Name
 }
 
 func (e *Edge) AddCount(count int64) {
 	e.Count += count
 }
 
-func (e *Edge) AddWalltimeValue(value int64) {
-	e.CumulativeWalltimeValue += value
+func (e *Edge) AddCPUtimeValue(value int64) {
+	e.CumulativeCPUTimeValue += value
 }
 
 func (e *Edge) AddMemValue(value int64) {
@@ -57,33 +86,26 @@ func (e *Edge) SetMinimumCount() {
 // EntryPoint represents a top level entry point into a series of edges.
 // All contained edges originate from this entry point.
 type EntryPoint struct {
-	Name     string
-	WTValue  int64
+	Function *Function
+	CPUValue int64
 	MemValue int64
 	Edges    map[string]*Edge
 }
 
-func NewEntryPoint(name string) *EntryPoint {
+func NewEntryPoint(function *Function) *EntryPoint {
 	return &EntryPoint{
-		Name:  name,
-		Edges: make(map[string]*Edge),
+		Function: function,
+		Edges:    make(map[string]*Edge),
 	}
 }
 
-func (ep *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
+func (ep *EntryPoint) addStatisticalSample(stack []*Function, count int64, cpuValue int64, memValue int64) {
 	// EntryPoint's value mesures how much of the profile it encompasses
-	ep.WTValue += wtValue
+	ep.CPUValue += cpuValue
 	ep.MemValue += memValue
 
-	fromFunction := ""
+	fromFunction := &Function{}
 	var edge *Edge
-
-	generateEdgeName := func(fromFunction string, toFunction string) string {
-		if fromFunction != "" {
-			return fmt.Sprintf("%s==>%s", fromFunction, toFunction)
-		}
-		return toFunction
-	}
 
 	// Every edge from the stack gets value applied to it.
 	for _, toFunction := range stack {
@@ -94,7 +116,7 @@ func (ep *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue 
 			edge = NewEdge(fromFunction, toFunction)
 			ep.Edges[edgeName] = edge
 		}
-		edge.AddWalltimeValue(wtValue)
+		edge.AddCPUtimeValue(cpuValue)
 		edge.AddMemValue(memValue)
 		fromFunction = toFunction
 	}
@@ -109,12 +131,23 @@ func (ep *EntryPoint) SetMinimumCounts() {
 	}
 }
 
+type timelineEntry struct {
+	Parent   *Function
+	Function *Function
+	Start    uint64
+	End      uint64
+}
+
+func (t *timelineEntry) String() string {
+	return fmt.Sprintf("%v==>%v", t.Parent, t.Function)
+}
+
 // Profle contains a set of entry points, which collectively contain all sampled data
 type Profile struct {
 	EntryPoints             map[string]*EntryPoint
 	EntryPointsLargeToSmall []*EntryPoint
 	CpuSampleRate           int
-	AllCPUSamples           [][]string
+	AllCPUSamples           [][]*Function
 }
 
 func NewProfile() *Profile {
@@ -127,24 +160,70 @@ func (p *Profile) HasData() bool {
 	return len(p.EntryPoints) > 0
 }
 
-func (p *Profile) biggestImpactEntryPoint() string {
+func (p *Profile) biggestImpactEntryPoint() *Function {
 	if len(p.EntryPointsLargeToSmall) == 0 {
 		panic(fmt.Errorf("No entry points found!"))
 	}
-	return p.EntryPointsLargeToSmall[0].Name
+	return p.EntryPointsLargeToSmall[0].Function
 }
 
-func (p *Profile) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
-	entryPointName := stack[0]
+func generateFullStack(sample *pprof.Sample) []*Function {
+	// Every stack begins with a fictional "go" root function so that the BF
+	// visualizer (which is single-threaded) can display all goroutines as if
+	// the whole thing were a single thread.
+	var commonStackTop = &Function{
+		ID:   ^uint64(0),
+		Name: "go",
+	}
+
+	// A sample contains a stack trace, which is made of locations.
+	// A location has one or more lines (>1 if functions are inlined).
+	// Each line points to a function.
+	stack := make([]*Function, 0, 10)
+	stack = append(stack, commonStackTop)
+
+	// PProf stack data is stored leaf-first. We need it to be root-first.
+	for i := len(sample.Location) - 1; i >= 0; i-- {
+		location := sample.Location[i]
+		for j := len(location.Line) - 1; j >= 0; j-- {
+			line := location.Line[j]
+			stack = append(stack, newFunctionFromPProf(line.Function))
+		}
+	}
+
+	decycleStack(stack)
+	return stack
+}
+
+func (p *Profile) AddStatisticalSample(sample *pprof.Sample, count int64, cpuValue int64, memValue int64) {
+	stack := generateFullStack(sample)
+	function := stack[0]
+	entryPointName := function.Name
 	entryPoint, ok := p.EntryPoints[entryPointName]
 	if !ok {
-		entryPoint = NewEntryPoint(entryPointName)
+		entryPoint = NewEntryPoint(function)
 		p.EntryPoints[entryPointName] = entryPoint
 	}
-	entryPoint.AddStatisticalSample(stack, count, wtValue, memValue)
-	if wtValue > 0 {
+	entryPoint.addStatisticalSample(stack, count, cpuValue, memValue)
+
+	if cpuValue > 0 {
 		p.AllCPUSamples = append(p.AllCPUSamples, stack)
 	}
+}
+
+func (p *Profile) AddCPUSample(sample *pprof.Sample) {
+	// All pprof profiles have count in index 0, and whatever value in index 1.
+	// I haven't encountered a profile with sample value index > 1, and in fact
+	// it cannot happen the way runtime.pprof does profiling atm.
+	const countIndex = 0
+	const valueIndex = 1
+
+	p.AddStatisticalSample(sample, sample.Value[countIndex], sample.Value[valueIndex], 0)
+}
+
+func (p *Profile) AddMemSample(sample *pprof.Sample) {
+	const valueIndex = 1
+	p.AddStatisticalSample(sample, 0, 0, sample.Value[valueIndex])
 }
 
 func (p *Profile) Finish() {
@@ -155,62 +234,26 @@ func (p *Profile) Finish() {
 	}
 
 	sort.Slice(p.EntryPointsLargeToSmall, func(i, j int) bool {
-		return p.EntryPointsLargeToSmall[i].WTValue > p.EntryPointsLargeToSmall[j].WTValue
+		return p.EntryPointsLargeToSmall[i].CPUValue > p.EntryPointsLargeToSmall[j].CPUValue
 	})
 }
 
-func decycleStack(stack []string) {
-	seen := make(map[string]int)
-	for i, v := range stack {
-		if dupCount, ok := seen[v]; ok {
-			stack[i] = fmt.Sprintf("%s@%d", v, dupCount)
-			seen[v] = dupCount + 1
-		} else {
-			seen[v] = 1
-		}
-	}
-}
-
-func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile {
-	// All pprof profiles have count in index 0, and whatever value in index 1.
-	// I haven't encountered a profile with sample value index > 1, and in fact
-	// it cannot happen the way runtime.pprof does profiling atm.
-	const countIndex = 0
-	const valueIndex = 1
-
-	generateFullStack := func(sample *pprof.Sample) []string {
-		// A sample contains a stack trace, which is made of locations.
-		// A location has one or more lines (>1 if functions are inlined).
-		// Each line points to a function.
-		stack := make([]string, 0, 10)
-		stack = append(stack, "go")
-		for i := len(sample.Location) - 1; i >= 0; i-- {
-			location := sample.Location[i]
-			for j := len(location.Line) - 1; j >= 0; j-- {
-				line := location.Line[j]
-				stack = append(stack, line.Function.Name)
+func decycleStack(stack []*Function) {
+	// If the same function is encountered multiple times in a goroutine stack,
+	// create duplicates with @1, @2, etc appended to the name so that they show
+	// up as different names in the BF visualizer.
+	seen := make(map[uint64]int)
+	for i, f := range stack {
+		if dupCount, ok := seen[f.ID]; ok {
+			stack[i] = &Function{
+				ID:   f.ID,
+				Name: fmt.Sprintf("%s@%d", f.Name, dupCount),
 			}
-		}
-		decycleStack(stack)
-		return stack
-	}
-
-	profile := NewProfile()
-
-	for _, cpuProfile := range cpuProfiles {
-		for _, sample := range cpuProfile.Sample {
-			profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex], 0)
+			seen[f.ID] = dupCount + 1
+		} else {
+			seen[f.ID] = 1
 		}
 	}
-
-	for _, memProfile := range memProfiles {
-		for _, sample := range memProfile.Sample {
-			profile.AddStatisticalSample(generateFullStack(sample), 0, 0, sample.Value[valueIndex])
-		}
-	}
-
-	profile.Finish()
-	return profile
 }
 
 // Read a pprof format profile and convert to our internal format.
@@ -233,7 +276,21 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 		}
 	}
 
-	profile := convertPProfsToInternal(cpuProfiles, memProfiles)
+	profile := NewProfile()
+
+	for _, cpuProfile := range cpuProfiles {
+		for _, sample := range cpuProfile.Sample {
+			profile.AddCPUSample(sample)
+		}
+	}
+
+	for _, memProfile := range memProfiles {
+		for _, sample := range memProfile.Sample {
+			profile.AddMemSample(sample)
+		}
+	}
+
+	profile.Finish()
 	return profile, nil
 }
 
@@ -300,7 +357,7 @@ func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer, dstDir string) (err er
 	return
 }
 
-func generateContextStringFromSlice(args []string) string {
+func generateContextHeaderFromArgs(args []string) string {
 	s := strings.Builder{}
 	s.WriteString("script=")
 	s.WriteString(url.QueryEscape(args[0]))
@@ -313,163 +370,158 @@ func generateContextStringFromSlice(args []string) string {
 	return s.String()
 }
 
-func generateContextString() string {
-	return generateContextStringFromSlice(os.Args)
+func generateContextHeader() string {
+	return generateContextHeaderFromArgs(os.Args)
+}
+
+func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
+	tlEntriesByEndTime := make([]*timelineEntry, 0, 10)
+
+	// Keeps track of the currently "active" functions as we move from stack to stack.
+	activeTLEntries := make(map[string]*timelineEntry)
+
+	prevStack := []*Function{}
+	lastMatchIndex := 0
+	for sampleIndex := 0; sampleIndex < len(profile.AllCPUSamples); sampleIndex++ {
+		nowStack := profile.AllCPUSamples[sampleIndex]
+		prevStackLength := len(prevStack)
+		nowStackLength := len(nowStack)
+		shortestStackLength := prevStackLength
+		if nowStackLength < shortestStackLength {
+			shortestStackLength = nowStackLength
+		}
+
+		// Find the last index where the previous and current stack are in the same function.
+		lastMatchIndex = 0
+		for i := 1; i < shortestStackLength; i++ {
+			if nowStack[i].Name != prevStack[i].Name {
+				break
+			}
+			tlEntry := activeTLEntries[nowStack[i].Name]
+			tlEntry.End++
+			lastMatchIndex = i
+		}
+
+		// If the previous stack has entries that the current does not, those
+		// functions have now ended. Mark them ended in leaf-to-root order.
+		if lastMatchIndex < prevStackLength-1 {
+			for i := prevStackLength - 1; i > lastMatchIndex; i-- {
+				functionName := prevStack[i].Name
+				tlEntry := activeTLEntries[functionName]
+				activeTLEntries[functionName] = nil
+				tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
+			}
+		}
+
+		// If the current stack has entries that the previous does not, they
+		// are newly invoked functions.
+		if lastMatchIndex < nowStackLength-1 {
+			for i := lastMatchIndex + 1; i < nowStackLength; i++ {
+				tlEntry := &timelineEntry{
+					Parent:   nowStack[i-1],
+					Function: nowStack[i],
+					Start:    uint64(sampleIndex),
+					End:      uint64(sampleIndex + 1),
+				}
+				activeTLEntries[tlEntry.Function.Name] = tlEntry
+			}
+		}
+
+		prevStack = nowStack
+	}
+
+	for i := lastMatchIndex; i >= 1; i-- {
+		tlEntry := activeTLEntries[prevStack[i].Name]
+		tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
+	}
+
+	var minValue1 = func(value uint64) uint64 {
+		if value == 0 {
+			return 1
+		}
+		return value
+	}
+
+	for i, entry := range tlEntriesByEndTime {
+		// Assume 10ms per sample.
+		const timePerSample = 10
+		// Min value 1 because the BF visualizer doesn't like 0.
+		start := minValue1(entry.Start * timePerSample)
+		end := minValue1(entry.End * timePerSample)
+		pName := entry.Parent.Name
+		name := entry.Function.Name
+
+		if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", i, pName, name, start)); err != nil {
+			return
+		}
+		if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", i, pName, name, end)); err != nil {
+			return
+		}
+	}
+	return
 }
 
 // Write a parsed profile out as a Blackfire profile.
-func WriteBFFormat(profile *Profile, w io.Writer) error {
+func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
+	// TODO: reverse this temporary fix once the BF UI is fixed
+	const headerCostDimensions = "wt pmu"
+	const headerProfiledLanguage = "php"
+	// const headerCostDimensions = "cpu pmu"
+	// const headerProfiledLanguage = "go"
+	const headerProfilerType = "statistical"
+
 	osInfo, err := osinfo.GetOSInfo()
 	if err != nil {
-		return err
+		return
 	}
+
+	graphRoot := profile.biggestImpactEntryPoint()
 
 	// TODO: Profile title should be user-generated somehow
 	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
 
 	headers := make(map[string]string)
-	// TODO: reverse this temporary fix
-	// headers["Cost-Dimensions"] = "cpu pmu"
-	headers["Cost-Dimensions"] = "wt pmu"
-	headers["graph-root-id"] = profile.biggestImpactEntryPoint()
+	headers["Cost-Dimensions"] = headerCostDimensions
+	headers["graph-root-id"] = graphRoot.Name
 	headers["probed-os"] = osInfo.Name
-	headers["profiler-type"] = "statistical"
-	// TODO: reverse this temporary fix
-	// headers["probed-language"] = "go"
-	headers["probed-language"] = "php"
+	headers["profiler-type"] = headerProfilerType
+	headers["probed-language"] = headerProfiledLanguage
 	headers["probed-runtime"] = runtime.Version()
 	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
+	headers["Context"] = generateContextHeader()
 	// headers["Profile-Title"] = profileTitle
-	headers["Context"] = generateContextString()
 
 	bufW := bufio.NewWriter(w)
+	defer func() {
+		if err != nil {
+			err = bufW.Flush()
+		}
+	}()
 
-	if _, err := bufW.WriteString("file-format: BlackfireProbe\n"); err != nil {
-		return err
+	if _, err = bufW.WriteString("file-format: BlackfireProbe\n"); err != nil {
+		return
 	}
 
 	for k, v := range headers {
-		if _, err := bufW.WriteString(fmt.Sprintf("%s: %s\n", k, v)); err != nil {
-			return err
+		if _, err = bufW.WriteString(fmt.Sprintf("%s: %s\n", k, v)); err != nil {
+			return
 		}
 	}
 
-	fmt.Printf("### Sample stack count: %v\n", len(profile.AllCPUSamples))
-
-	var entriesByEndTime []*timelineEntry
-
-	index := 0
-	activeEntries := make(map[string]*timelineEntry)
-	lastStack := profile.AllCPUSamples[0]
-	for i := len(lastStack) - 1; i >= 1; i-- {
-		entry := &timelineEntry{
-			Parent: lastStack[i-1],
-			Name:   lastStack[i],
-			Start:  0,
-			End:    1,
-			Index:  index,
-		}
-		activeEntries[entry.Name] = entry
-		// TODO: reverse this temporary fix
-		// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//0 0\n", entry.Index, entry.Parent, entry.Name))
-		// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//1 0\n", entry.Index, entry.Parent, entry.Name))
-		index++
-	}
-
-	fmt.Printf("### Initial seen: %v\n", activeEntries)
-
-	fmt.Printf("###### Initial Sample length %v\n", len(lastStack))
-	fmt.Printf("#### Initial Stack = %v\n", lastStack)
-
-	lastMatchIndex := 0
-	for i := 1; i < len(profile.AllCPUSamples); i++ {
-		stack := profile.AllCPUSamples[i]
-		lastLength := len(lastStack)
-		nowLength := len(stack)
-		lowestLength := lastLength
-		if nowLength < lowestLength {
-			lowestLength = nowLength
-		}
-		fmt.Printf("###### Sample %v, nl %v, ll %v, low %v\n", i, nowLength, lastLength, lowestLength)
-		fmt.Printf("#### Stack = %v\n", stack)
-		lastMatchIndex = 0
-		for j := 1; j < lowestLength; j++ {
-			if stack[j] != lastStack[j] {
-				fmt.Printf("#### %v [%v] != [%v]\n", j, stack[j], lastStack[j])
-				break
-			}
-			entry := activeEntries[stack[j]]
-			entry.End++
-			lastMatchIndex = j
-			fmt.Printf("### Increment Entry %v to %v\n", entry.Name, entry.End)
-		}
-		if lastMatchIndex < lastLength-1 {
-			fmt.Printf("##### last match %v < last stack %v. Removing entries\n", lastMatchIndex, lastLength-1)
-			for j := lastMatchIndex + 1; j < lastLength; j++ {
-				fmt.Printf("### Remove Entry at %v = %v\n", j, lastStack[j])
-				name := lastStack[j]
-				entry := activeEntries[name]
-				activeEntries[name] = nil
-				entriesByEndTime = append(entriesByEndTime, entry)
-				// bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
-			}
-		}
-		if lastMatchIndex < nowLength-1 {
-			fmt.Printf("##### last match %v < now stack %v. Adding entries\n", lastMatchIndex, nowLength-1)
-			for j := lastMatchIndex + 1; j < nowLength; j++ {
-				fmt.Printf("### Add Entry at %v = %v\n", j, stack[j])
-				entry := &timelineEntry{
-					Parent: stack[j-1],
-					Name:   stack[j],
-					Start:  uint64(i),
-					End:    uint64(i + 1),
-					Index:  index,
-				}
-				activeEntries[entry.Name] = entry
-				// TODO: reverse this temporary fix
-				// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.Start*100))
-				// bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//1 0\n", entry.Index, entry.Parent, entry.Name))
-				index++
-			}
-		}
-
-		lastStack = stack
-	}
-
-	for i := lastMatchIndex; i >= 1; i-- {
-		fmt.Printf("### Remove Entry at %v = %v\n", i, lastStack[i])
-		name := lastStack[i]
-		entry := activeEntries[name]
-		activeEntries[name] = nil
-		entriesByEndTime = append(entriesByEndTime, entry)
-		// bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", entry.Index, entry.Parent, entry.Name, entry.End*100))
-	}
-
-	for i, entry := range entriesByEndTime {
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", i, entry.Parent, entry.Name, entry.Start*100+1))
-		bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", i, entry.Parent, entry.Name, entry.End*100+1))
-	}
+	WriteTimelineData(profile, bufW)
 
 	// End of headers
-	if _, err := bufW.WriteString("\n"); err != nil {
-		return err
+	if _, err = bufW.WriteString("\n"); err != nil {
+		return
 	}
 
-	entryPoint := profile.EntryPoints[headers["graph-root-id"]]
+	entryPoint := profile.EntryPoints[graphRoot.Name]
 	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
-			return err
+		if _, err = bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeCPUTimeValue/1000, edge.CumulativeMemValue)); err != nil {
+			return
 		}
 
 	}
 
-	return bufW.Flush()
-}
-
-type timelineEntry struct {
-	Parent string
-	Name   string
-	Start  uint64
-	End    uint64
-	Index  int
+	return
 }
