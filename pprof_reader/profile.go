@@ -414,7 +414,7 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 		}
 
 		// If the current stack has entries that the previous does not, they
-		// are newly invoked functions.
+		// are newly invoked functions, so mark them started.
 		if lastMatchIndex < nowStackLength-1 {
 			for i := lastMatchIndex + 1; i < nowStackLength; i++ {
 				tlEntry := &timelineEntry{
@@ -430,11 +430,14 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 		prevStack = nowStack
 	}
 
+	// Artificially end all still-active functions because the profile is ended.
+	// Like before, this must be done in leaf-to-root order.
 	for i := lastMatchIndex; i >= 1; i-- {
 		tlEntry := activeTLEntries[prevStack[i].Name]
 		tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
 	}
 
+	// The BF backend fails with start/end values of 0, so change 0 values to 1.
 	var minValue1 = func(value uint64) uint64 {
 		if value == 0 {
 			return 1
@@ -445,7 +448,8 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 	for i, entry := range tlEntriesByEndTime {
 		// Assume 10ms per sample.
 		const timePerSample = 10
-		// Min value 1 because the BF visualizer doesn't like 0.
+		// TODO: Remove this temporary fix once the backend bug is fixed
+		// https://github.com/blackfireio/blackfire.io/issues/13804
 		start := minValue1(entry.Start * timePerSample)
 		end := minValue1(entry.End * timePerSample)
 		pName := entry.Parent.Name
@@ -463,11 +467,12 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 
 // Write a parsed profile out as a Blackfire profile.
 func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
-	// TODO: reverse this temporary fix once the BF UI is fixed
-	const headerCostDimensions = "wt pmu"
-	const headerProfiledLanguage = "php"
+	// TODO: Remove this temporary fix once the backend bug is fixed
+	// https://github.com/blackfireio/blackfire.io/issues/13757
 	// const headerCostDimensions = "cpu pmu"
 	// const headerProfiledLanguage = "go"
+	const headerCostDimensions = "wt pmu"
+	const headerProfiledLanguage = "php"
 	const headerProfilerType = "statistical"
 
 	osInfo, err := osinfo.GetOSInfo()
@@ -503,6 +508,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
 		return
 	}
 
+	// Begin headers
 	for k, v := range headers {
 		if _, err = bufW.WriteString(fmt.Sprintf("%s: %s\n", k, v)); err != nil {
 			return
@@ -516,12 +522,12 @@ func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
 		return
 	}
 
+	// Profile data
 	entryPoint := profile.EntryPoints[graphRoot.Name]
 	for name, edge := range entryPoint.Edges {
 		if _, err = bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeCPUTimeValue/1000, edge.CumulativeMemValue)); err != nil {
 			return
 		}
-
 	}
 
 	return
