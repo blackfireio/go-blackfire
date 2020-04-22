@@ -493,8 +493,9 @@ func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
 
 	bufW := bufio.NewWriter(w)
 	defer func() {
+		bufErr := bufW.Flush()
 		if err != nil {
-			err = bufW.Flush()
+			err = bufErr
 		}
 	}()
 
