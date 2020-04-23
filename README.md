@@ -1,7 +1,7 @@
-Blackfire Probe for Go
-======================
+Blackfire Profiler for Go
+=========================
 
-Welcome to the [Blackfire](https://blackfire.io) probe for go! This document
-will help you integrate the Blackfire probe into your go applications.
+Welcome to the [Blackfire](https://blackfire.io) profiler SDK for Go!
 
-[Read the documentation](https://blackfire.io/docs/integrations/go/sdk).
+To integrate Blackfire into your Go applications, [read the
+documentation](https://blackfire.io/docs/integrations/go/sdk).
