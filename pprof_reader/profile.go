@@ -377,13 +377,25 @@ func generateContextHeader() string {
 func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 	tlEntriesByEndTime := make([]*timelineEntry, 0, 10)
 
+	var commonStackTop = &Function{
+		ID:   ^uint64(0) - 1,
+		Name: "golang",
+	}
+	allCPUSamples := make([][]*Function, 0, len(profile.AllCPUSamples))
+	for _, stack := range profile.AllCPUSamples {
+		newStack := make([]*Function, len(stack)+1, len(stack)+1)
+		newStack[0] = commonStackTop
+		copy(newStack[1:], stack)
+		allCPUSamples = append(allCPUSamples, newStack)
+	}
+
 	// Keeps track of the currently "active" functions as we move from stack to stack.
 	activeTLEntries := make(map[string]*timelineEntry)
 
 	prevStack := []*Function{}
 	lastMatchIndex := 0
-	for sampleIndex := 0; sampleIndex < len(profile.AllCPUSamples); sampleIndex++ {
-		nowStack := profile.AllCPUSamples[sampleIndex]
+	for sampleIndex := 0; sampleIndex < len(allCPUSamples); sampleIndex++ {
+		nowStack := allCPUSamples[sampleIndex]
 		prevStackLength := len(prevStack)
 		nowStackLength := len(nowStack)
 		shortestStackLength := prevStackLength
@@ -445,9 +457,10 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 		return value
 	}
 
+	// Assume 10ms per sample.
+	const timePerSample = 10
+
 	for i, entry := range tlEntriesByEndTime {
-		// Assume 10ms per sample.
-		const timePerSample = 10
 		// TODO: Remove this temporary fix once the backend bug is fixed
 		// https://github.com/blackfireio/blackfire.io/issues/13804
 		start := minValue1(entry.Start * timePerSample)
@@ -462,6 +475,18 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 			return
 		}
 	}
+
+	// Overall "go" timeline layer
+	index := len(tlEntriesByEndTime)
+	start := minValue1(0)
+	end := minValue1(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End * timePerSample)
+	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s//%d 0\n", index, "go", start)); err != nil {
+		return
+	}
+	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s//%d 0\n", index, "go", end)); err != nil {
+		return
+	}
+
 	return
 }
 
