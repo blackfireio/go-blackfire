@@ -148,6 +148,7 @@ type Profile struct {
 	EntryPointsLargeToSmall []*EntryPoint
 	CpuSampleRate           int
 	AllCPUSamples           [][]*Function
+	SampleRate              int
 }
 
 func NewProfile() *Profile {
@@ -257,7 +258,7 @@ func decycleStack(stack []*Function) {
 }
 
 // Read a pprof format profile and convert to our internal format.
-func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
+func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer, sampleRate int) (*Profile, error) {
 	cpuProfiles := []*pprof.Profile{}
 	for _, buffer := range cpuBuffers {
 		if profile, err := pprof.Parse(buffer); err != nil {
@@ -277,6 +278,7 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 	}
 
 	profile := NewProfile()
+	profile.SampleRate = sampleRate
 
 	for _, cpuProfile := range cpuProfiles {
 		for _, sample := range cpuProfile.Sample {
@@ -457,14 +459,13 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 		return value
 	}
 
-	// Assume 10ms per sample.
-	const timePerSample = 10
+	msPerSample := uint64(1000 / profile.SampleRate)
 
 	for i, entry := range tlEntriesByEndTime {
 		// TODO: Remove this temporary fix once the backend bug is fixed
 		// https://github.com/blackfireio/blackfire.io/issues/13804
-		start := minValue1(entry.Start * timePerSample)
-		end := minValue1(entry.End * timePerSample)
+		start := minValue1(entry.Start * msPerSample)
+		end := minValue1(entry.End * msPerSample)
 		pName := entry.Parent.Name
 		name := entry.Function.Name
 
@@ -479,7 +480,7 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 	// Overall "go" timeline layer
 	index := len(tlEntriesByEndTime)
 	start := minValue1(0)
-	end := minValue1(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End * timePerSample)
+	end := minValue1(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End * msPerSample)
 	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s//%d 0\n", index, "go", start)); err != nil {
 		return
 	}
