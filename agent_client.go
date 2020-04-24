@@ -25,6 +25,8 @@ type agentClient struct {
 	agentAddress        string
 	signingEndpoint     *url.URL
 	signingAuth         string
+	serverID            string
+	serverToken         string
 	firstBlackfireQuery string
 	rawBlackfireQuery   string
 	links               []*linksMap
@@ -52,6 +54,8 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 		links:               make([]*linksMap, 10),
 		profiles:            make([]*Profile, 10),
 		logger:              configuration.Logger,
+		serverID:            configuration.ServerID,
+		serverToken:         configuration.ServerToken,
 	}, nil
 }
 
@@ -149,10 +153,12 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 
 	// These must be done separately from the rest of the headers because they
 	// either must be sent in a specific order, or use nonstandard encoding.
-	orderedHeaders := []string{
-		fmt.Sprintf("Blackfire-Query: %s", c.rawBlackfireQuery),
-		fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)),
+	var orderedHeaders []string
+	if c.serverID != "" && c.serverToken != "" {
+		orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Auth: %v:%v", c.serverID, c.serverToken))
 	}
+	orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Query: %s", c.rawBlackfireQuery))
+	orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)))
 	c.rawBlackfireQuery = ""
 
 	unorderedHeaders := make(map[string]interface{})

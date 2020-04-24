@@ -44,6 +44,12 @@ type Configuration struct {
 	// Client token to authenticate with the Blackfire API
 	ClientToken string
 
+	// Server ID for Blackfire-Auth header
+	ServerID string
+
+	// Server token for Blackfire-Auth header
+	ServerToken string
+
 	// The Blackfire API endpoint the profile data will be sent to (default https://blackfire.io)
 	HTTPEndpoint *url.URL
 
@@ -212,6 +218,14 @@ func (c *Configuration) configureFromEnv() {
 
 	if v := c.readEnvVar("BLACKFIRE_CLIENT_TOKEN"); v != "" {
 		c.ClientToken = v
+	}
+
+	if v := c.readEnvVar("BLACKFIRE_SERVER_ID"); v != "" {
+		c.ServerID = v
+	}
+
+	if v := c.readEnvVar("BLACKFIRE_SERVER_TOKEN"); v != "" {
+		c.ServerToken = v
 	}
 
 	if v := c.readEnvVar("BLACKFIRE_ENDPOINT"); v != "" {
