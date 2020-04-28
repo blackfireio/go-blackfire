@@ -447,7 +447,7 @@ func (p *probe) endProfile() error {
 	}
 
 	profileBuffer := new(bytes.Buffer)
-	profile.CpuSampleRate = p.configuration.DefaultCPUSampleRateHz
+	profile.CpuSampleRateHz = p.configuration.DefaultCPUSampleRateHz
 	if err := pprof_reader.WriteBFFormat(profile, profileBuffer); err != nil {
 		return err
 	}

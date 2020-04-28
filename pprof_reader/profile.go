@@ -37,7 +37,7 @@ func newFunctionFromPProf(f *pprof.Function) *Function {
 // Edge represents an edge of the graph, which is a call from one function to another.
 type Edge struct {
 	Count                  int64
-	CumulativeCPUTimeValue int64
+	CumulativeCPUTimeValue int64 // Nanoseconds
 	CumulativeMemValue     int64
 	FromFunction           *Function
 	ToFunction             *Function
@@ -146,9 +146,8 @@ func (t *timelineEntry) String() string {
 type Profile struct {
 	EntryPoints             map[string]*EntryPoint
 	EntryPointsLargeToSmall []*EntryPoint
-	CpuSampleRate           int
 	AllCPUSamples           [][]*Function
-	SampleRate              int
+	CpuSampleRateHz         int
 }
 
 func NewProfile() *Profile {
@@ -258,7 +257,7 @@ func decycleStack(stack []*Function) {
 }
 
 // Read a pprof format profile and convert to our internal format.
-func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer, sampleRate int) (*Profile, error) {
+func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer, sampleRateHz int) (*Profile, error) {
 	cpuProfiles := []*pprof.Profile{}
 	for _, buffer := range cpuBuffers {
 		if profile, err := pprof.Parse(buffer); err != nil {
@@ -278,7 +277,7 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer, sampleRate int) (*Pro
 	}
 
 	profile := NewProfile()
-	profile.SampleRate = sampleRate
+	profile.CpuSampleRateHz = sampleRateHz
 
 	for _, cpuProfile := range cpuProfiles {
 		for _, sample := range cpuProfile.Sample {
@@ -451,21 +450,14 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 		tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
 	}
 
-	// The BF backend fails with start/end values of 0, so change 0 values to 1.
-	var minValue1 = func(value uint64) uint64 {
-		if value == 0 {
-			return 1
-		}
-		return value
+	sampleIdxToUSec := func(index uint64) uint64 {
+		usecPerSample := float64(1000000 / float64(profile.CpuSampleRateHz))
+		return uint64(float64(index) * usecPerSample)
 	}
 
-	msPerSample := uint64(1000 / profile.SampleRate)
-
 	for i, entry := range tlEntriesByEndTime {
-		// TODO: Remove this temporary fix once the backend bug is fixed
-		// https://github.com/blackfireio/blackfire.io/issues/13804
-		start := minValue1(entry.Start * msPerSample)
-		end := minValue1(entry.End * msPerSample)
+		start := sampleIdxToUSec(entry.Start)
+		end := sampleIdxToUSec(entry.End)
 		pName := entry.Parent.Name
 		name := entry.Function.Name
 
@@ -479,8 +471,8 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 
 	// Overall "go" timeline layer
 	index := len(tlEntriesByEndTime)
-	start := minValue1(0)
-	end := minValue1(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End * msPerSample)
+	start := uint64(0)
+	end := sampleIdxToUSec(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End)
 	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s//%d 0\n", index, "go", start)); err != nil {
 		return
 	}
@@ -493,12 +485,8 @@ func WriteTimelineData(profile *Profile, bufW *bufio.Writer) (err error) {
 
 // Write a parsed profile out as a Blackfire profile.
 func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
-	// TODO: Remove this temporary fix once the backend bug is fixed
-	// https://github.com/blackfireio/blackfire.io/issues/13757
-	// const headerCostDimensions = "cpu pmu"
-	// const headerProfiledLanguage = "go"
-	const headerCostDimensions = "wt pmu"
-	const headerProfiledLanguage = "php"
+	const headerCostDimensions = "cpu pmu"
+	const headerProfiledLanguage = "go"
 	const headerProfilerType = "statistical"
 
 	osInfo, err := osinfo.GetOSInfo()
@@ -518,7 +506,7 @@ func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
 	headers["profiler-type"] = headerProfilerType
 	headers["probed-language"] = headerProfiledLanguage
 	headers["probed-runtime"] = runtime.Version()
-	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
+	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRateHz)
 	headers["Context"] = generateContextHeader()
 	// headers["Profile-Title"] = profileTitle
 
@@ -548,10 +536,17 @@ func WriteBFFormat(profile *Profile, w io.Writer) (err error) {
 		return
 	}
 
+	toUSec := func(pprofUnits int64) int64 {
+		// pprof CPU units are nanoseconds
+		return pprofUnits / 1000
+	}
+
 	// Profile data
 	entryPoint := profile.EntryPoints[graphRoot.Name]
 	for name, edge := range entryPoint.Edges {
-		if _, err = bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeCPUTimeValue/1000, edge.CumulativeMemValue)); err != nil {
+		if _, err = bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name,
+			edge.Count, toUSec(edge.CumulativeCPUTimeValue),
+			edge.CumulativeMemValue)); err != nil {
 			return
 		}
 	}
