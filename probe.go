@@ -17,12 +17,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// globalProbe is the access point for all probe functionality. The API, signal,
-// and HTTP interfaces perform all operations by proxying to globalProbe. This
-// ensures that mutexes and other guards are respected, and no interface can
-// trigger functionality that others can't, or in a way that others can't.
-var globalProbe = newProbe()
-
 type profilerState int
 
 const (
@@ -140,7 +134,7 @@ func (p *probe) EnableNow() (err error) {
 }
 
 func (p *probe) Enable() (err error) {
-	globalProbe.configuration.onDemandOnly = true
+	p.configuration.onDemandOnly = true
 	return p.EnableNowFor(p.configuration.MaxProfileDuration)
 }
 
@@ -446,13 +440,7 @@ func (p *probe) endProfile() error {
 		return nil
 	}
 
-	profileBuffer := new(bytes.Buffer)
-	profile.CpuSampleRateHz = p.configuration.DefaultCPUSampleRateHz
-	if err := pprof_reader.WriteBFFormat(profile, profileBuffer); err != nil {
-		return err
-	}
-
-	if err := p.agentClient.SendProfile(profileBuffer.Bytes()); err != nil {
+	if err := p.agentClient.SendProfile(profile); err != nil {
 		return err
 	}
 
