@@ -25,14 +25,12 @@ func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOpti
 		return
 	}
 
-	graphRoot := profile.BiggestImpactEntryPoint()
-
 	// TODO: Profile title should be user-generated somehow
 	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
 
 	headers := make(map[string]string)
 	headers["Cost-Dimensions"] = headerCostDimensions
-	headers["graph-root-id"] = graphRoot.Name
+	headers["graph-root-id"] = "go"
 	headers["probed-os"] = osInfo.Name
 	headers["profiler-type"] = headerProfilerType
 	headers["probed-language"] = headerProfiledLanguage
@@ -62,7 +60,9 @@ func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOpti
 	}
 
 	if options.IsTimespanFlagSet() {
-		writeTimelineData(profile, bufW)
+		if err = writeTimelineData(profile, bufW); err != nil {
+			return
+		}
 	}
 
 	// End of headers
@@ -70,20 +70,8 @@ func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOpti
 		return
 	}
 
-	toUSec := func(pprofUnits int64) int64 {
-		// pprof CPU units are nanoseconds
-		return pprofUnits / 1000
-	}
-
 	// Profile data
-	entryPoint := profile.EntryPoints[graphRoot.Name]
-	for name, edge := range entryPoint.Edges {
-		if _, err = bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name,
-			edge.Count, toUSec(edge.CumulativeCPUTimeValue),
-			edge.CumulativeMemValue)); err != nil {
-			return
-		}
-	}
+	err = writeSamples(profile, bufW)
 
 	return
 }
@@ -105,51 +93,118 @@ func generateContextHeader() string {
 	return generateContextHeaderFromArgs(os.Args)
 }
 
-func writeTimelineData(profile *pprof_reader.Profile, bufW *bufio.Writer) (err error) {
-	tlEntriesByEndTime := make([]*pprof_reader.TimelineEntry, 0, 10)
+func writeSamples(profile *pprof_reader.Profile, bufW *bufio.Writer) (err error) {
+	totalCPUTime := uint64(0)
+	totalMemUsage := uint64(0)
 
-	var commonStackTop = &pprof_reader.Function{
-		ID:   ^uint64(0) - 1,
-		Name: "golang",
+	for _, sample := range profile.Samples {
+		totalCPUTime += sample.CPUTime
+		totalMemUsage += sample.MemUsage
+
+		if len(sample.Stack) == 0 {
+			continue
+		}
+
+		// Fake "go" top-of-stack
+		if _, err = bufW.WriteString(fmt.Sprintf("go==>%s//%d %d %d\n",
+			sample.Stack[0].Name,
+			sample.Count, sample.CPUTime, sample.MemUsage)); err != nil {
+			return
+		}
+
+		for iStack, f := range sample.Stack {
+			if iStack == 0 {
+				continue
+			}
+
+			fPrev := sample.Stack[iStack-1]
+			if _, err = bufW.WriteString(fmt.Sprintf("%s==>%s//%d %d %d\n",
+				fPrev.Name, f.Name,
+				sample.Count, sample.CPUTime, sample.MemUsage)); err != nil {
+				return
+			}
+		}
 	}
-	allCPUSamples := make([][]*pprof_reader.Function, 0, len(profile.AllCPUSamples))
-	for _, stack := range profile.AllCPUSamples {
-		newStack := make([]*pprof_reader.Function, len(stack)+1, len(stack)+1)
-		newStack[0] = commonStackTop
-		copy(newStack[1:], stack)
-		allCPUSamples = append(allCPUSamples, newStack)
+
+	if _, err = bufW.WriteString(fmt.Sprintf("==>go//%d %d %d\n", 1, totalCPUTime, totalMemUsage)); err != nil {
+		return
 	}
+
+	return
+}
+
+type timelineEntry struct {
+	Parent   *pprof_reader.Function
+	Function *pprof_reader.Function
+	CPUStart uint64
+	CPUEnd   uint64
+	MemStart uint64
+	MemEnd   uint64
+}
+
+func (t *timelineEntry) String() string {
+	return fmt.Sprintf("%v==>%v", t.Parent, t.Function)
+}
+
+func writeTimelineData(profile *pprof_reader.Profile, bufW *bufio.Writer) (err error) {
+	tlEntriesByEndTime := make([]*timelineEntry, 0, 10)
+
+	// Insert 2-level fake root so that the timeline visualizer has "go" as the
+	// top of the stack.
+	fakeStackTop := []*pprof_reader.Function{
+		&pprof_reader.Function{
+			Name:           "golang",
+			ReferenceCount: 1,
+		},
+		&pprof_reader.Function{
+			Name:           "go",
+			ReferenceCount: 1,
+		},
+	}
+
+	var alteredSamples []*pprof_reader.Sample
+	for _, sample := range profile.Samples {
+		newStack := make([]*pprof_reader.Function, 0, len(sample.Stack)+len(fakeStackTop))
+		newStack = append(newStack, fakeStackTop...)
+		newStack = append(newStack, sample.Stack...)
+		alteredSamples = append(alteredSamples, sample.CloneWithStack(newStack))
+	}
+	profile = profile.CloneWithSamples(alteredSamples)
 
 	// Keeps track of the currently "active" functions as we move from stack to stack.
-	activeTLEntries := make(map[string]*pprof_reader.TimelineEntry)
+	activeTLEntries := make(map[string]*timelineEntry)
+	// Since these are fake, we need to manually add them to the active list.
+	for _, f := range fakeStackTop {
+		activeTLEntries[f.Name] = &timelineEntry{}
+	}
 
-	prevStack := []*pprof_reader.Function{}
-	lastMatchIndex := 0
-	for sampleIndex := 0; sampleIndex < len(allCPUSamples); sampleIndex++ {
-		nowStack := allCPUSamples[sampleIndex]
-		prevStackLength := len(prevStack)
-		nowStackLength := len(nowStack)
-		shortestStackLength := prevStackLength
-		if nowStackLength < shortestStackLength {
-			shortestStackLength = nowStackLength
+	prevSample := &pprof_reader.Sample{}
+	currentCPUTime := uint64(0)
+	lastMatchStackIndex := 0
+	for _, nowSample := range profile.Samples {
+		prevStackEnd := len(prevSample.Stack) - 1
+		nowStackEnd := len(nowSample.Stack) - 1
+		shortestStackEnd := prevStackEnd
+		if nowStackEnd < shortestStackEnd {
+			shortestStackEnd = nowStackEnd
 		}
 
 		// Find the last index where the previous and current stack are in the same function.
-		lastMatchIndex = 0
-		for i := 1; i < shortestStackLength; i++ {
-			if nowStack[i].Name != prevStack[i].Name {
+		lastMatchStackIndex = 0
+		for i := 0; i <= shortestStackEnd; i++ {
+			if nowSample.Stack[i].Name != prevSample.Stack[i].Name {
 				break
 			}
-			tlEntry := activeTLEntries[nowStack[i].Name]
-			tlEntry.End++
-			lastMatchIndex = i
+			tlEntry := activeTLEntries[nowSample.Stack[i].Name]
+			tlEntry.CPUEnd += nowSample.CPUTime
+			lastMatchStackIndex = i
 		}
 
 		// If the previous stack has entries that the current does not, those
 		// functions have now ended. Mark them ended in leaf-to-root order.
-		if lastMatchIndex < prevStackLength-1 {
-			for i := prevStackLength - 1; i > lastMatchIndex; i-- {
-				functionName := prevStack[i].Name
+		if lastMatchStackIndex < prevStackEnd {
+			for i := prevStackEnd; i > lastMatchStackIndex; i-- {
+				functionName := prevSample.Stack[i].Name
 				tlEntry := activeTLEntries[functionName]
 				activeTLEntries[functionName] = nil
 				tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
@@ -158,56 +213,51 @@ func writeTimelineData(profile *pprof_reader.Profile, bufW *bufio.Writer) (err e
 
 		// If the current stack has entries that the previous does not, they
 		// are newly invoked functions, so mark them started.
-		if lastMatchIndex < nowStackLength-1 {
-			for i := lastMatchIndex + 1; i < nowStackLength; i++ {
-				tlEntry := &pprof_reader.TimelineEntry{
-					Parent:   nowStack[i-1],
-					Function: nowStack[i],
-					Start:    uint64(sampleIndex),
-					End:      uint64(sampleIndex + 1),
+		if lastMatchStackIndex < nowStackEnd {
+			for i := lastMatchStackIndex + 1; i <= nowStackEnd; i++ {
+				tlEntry := &timelineEntry{
+					Parent:   nowSample.Stack[i-1],
+					Function: nowSample.Stack[i],
+					MemStart: nowSample.MemUsage,
+					MemEnd:   nowSample.MemUsage,
+					CPUStart: currentCPUTime,
+					CPUEnd:   currentCPUTime + nowSample.CPUTime,
 				}
 				activeTLEntries[tlEntry.Function.Name] = tlEntry
 			}
 		}
 
-		prevStack = nowStack
+		currentCPUTime += nowSample.CPUTime
+		prevSample = nowSample
 	}
 
 	// Artificially end all still-active functions because the profile is ended.
 	// Like before, this must be done in leaf-to-root order.
-	for i := lastMatchIndex; i >= 1; i-- {
-		tlEntry := activeTLEntries[prevStack[i].Name]
+	for i := lastMatchStackIndex; i >= 1; i-- {
+		tlEntry := activeTLEntries[prevSample.Stack[i].Name]
 		tlEntriesByEndTime = append(tlEntriesByEndTime, tlEntry)
 	}
 
-	sampleIdxToUSec := func(index uint64) uint64 {
-		usecPerSample := float64(1000000 / float64(profile.CpuSampleRateHz))
-		return uint64(float64(index) * usecPerSample)
-	}
-
 	for i, entry := range tlEntriesByEndTime {
-		start := sampleIdxToUSec(entry.Start)
-		end := sampleIdxToUSec(entry.End)
-		pName := entry.Parent.Name
 		name := entry.Function.Name
 
-		if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d 0\n", i, pName, name, start)); err != nil {
-			return
-		}
-		if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d 0\n", i, pName, name, end)); err != nil {
-			return
-		}
-	}
+		if entry.Parent != nil {
+			pName := entry.Parent.Name
 
-	// Overall "go" timeline layer
-	index := len(tlEntriesByEndTime)
-	start := uint64(0)
-	end := sampleIdxToUSec(tlEntriesByEndTime[len(tlEntriesByEndTime)-1].End)
-	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s//%d 0\n", index, "go", start)); err != nil {
-		return
-	}
-	if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s//%d 0\n", index, "go", end)); err != nil {
-		return
+			if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s==>%s//%d %d\n", i, pName, name, entry.CPUStart, entry.MemStart)); err != nil {
+				return
+			}
+			if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s==>%s//%d %d\n", i, pName, name, entry.CPUEnd, entry.MemEnd)); err != nil {
+				return
+			}
+		} else {
+			if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-start: %s//%d %d\n", i, name, entry.CPUStart, entry.MemStart)); err != nil {
+				return
+			}
+			if _, err = bufW.WriteString(fmt.Sprintf("Threshold-%d-end: %s//%d %d\n", i, name, entry.CPUEnd, entry.MemEnd)); err != nil {
+				return
+			}
+		}
 	}
 
 	return
@@ -269,5 +319,7 @@ func (p ProbeOptions) getOption(name string) interface{} {
 }
 
 func (p ProbeOptions) IsTimespanFlagSet() bool {
+	// Super ugly, but the actual type can be anything the json decoder chooses,
+	// so we must go by its string representation.
 	return fmt.Sprintf("%v", p.getOption("flag_timespan")) == "1"
 }

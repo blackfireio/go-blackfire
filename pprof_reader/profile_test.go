@@ -8,7 +8,6 @@ import (
 func newTestStack(entries ...string) (stack []*Function) {
 	for _, e := range entries {
 		stack = append(stack, &Function{
-			ID:   uint64(e[0] - 'a'),
 			Name: e,
 		})
 	}

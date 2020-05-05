@@ -67,16 +67,13 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 
 func (c *agentClient) CurrentBlackfireQuery() (string, error) {
 	if c.rawBlackfireQuery != "" {
-		fmt.Printf("### raw bf query = %v\n", c.rawBlackfireQuery)
 		return c.rawBlackfireQuery, nil
 	}
 	if c.firstBlackfireQuery != "" {
-		fmt.Printf("### first bf query = %v\n", c.firstBlackfireQuery)
 		c.rawBlackfireQuery = c.firstBlackfireQuery
 		c.firstBlackfireQuery = ""
 		return c.rawBlackfireQuery, nil
 	}
-	fmt.Printf("### send signing req\n")
 	bfQuery, err := c.sendSigningRequest()
 	if err != nil {
 		return "", err
@@ -241,12 +238,12 @@ func (c *agentClient) SendProfile(profile *pprof_reader.Profile) (err error) {
 		return
 	}
 
-	var response map[string]url.Values
+	var response http.Header
 	if response, err = conn.ReadResponse(); err != nil {
 		return err
 	}
-	if errResp, ok := response["Blackfire-Error"]; ok {
-		return fmt.Errorf("Blackfire-Error: %s", errResp)
+	if response.Get("Blackfire-Error") != "" {
+		return fmt.Errorf("Blackfire-Error: %s", response.Get("Blackfire-Error"))
 	}
 
 	profileBuffer := new(bytes.Buffer)

@@ -426,7 +426,7 @@ func (p *probe) endProfile() error {
 		pprof_reader.DumpProfiles(p.cpuProfileBuffers, p.memProfileBuffers, p.configuration.PProfDumpDir)
 	}
 
-	profile, err := pprof_reader.ReadFromPProf(p.cpuProfileBuffers, p.memProfileBuffers, p.configuration.DefaultCPUSampleRateHz)
+	profile, err := pprof_reader.ReadFromPProf(p.cpuProfileBuffers, p.memProfileBuffers)
 	if err != nil {
 		return err
 	}

@@ -3,11 +3,13 @@ package blackfire
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 
-	"github.com/kstenerud/go-loggedio"
 	"github.com/rs/zerolog"
 )
 
@@ -32,7 +34,6 @@ func (c *agentConnection) Init(network, address string) (err error) {
 	if c.conn, err = net.Dial(network, address); err != nil {
 		return
 	}
-	c.conn = loggedio.StringToLog(c.conn, "R %v", "W %v", "E %v", "C")
 
 	c.reader = bufio.NewReader(c.conn)
 	c.writer = bufio.NewWriter(c.conn)
@@ -58,25 +59,16 @@ func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue stri
 	return
 }
 
-func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
-	response := make(map[string]url.Values)
-
-	for {
-		name, urlEncodedValue, err := c.ReadEncodedHeader()
-		if err != nil {
-			return nil, err
+func (c *agentConnection) ReadResponse() (http.Header, error) {
+	tp := textproto.NewReader(c.reader)
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
 		}
-		if name == "" {
-			break
-		}
-		// TODO: This needs to return url.Values directly so that multiple headers
-		// with the same name can be added to the array
-		response[name], err = url.ParseQuery(urlEncodedValue)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
-	return response, nil
+	return http.Header(mimeHeader), nil
 }
 
 func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {
