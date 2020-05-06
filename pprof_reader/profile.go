@@ -1,236 +1,217 @@
 package pprof_reader
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"path"
-	"runtime"
-	"sort"
-	"strconv"
-	"strings"
 
 	pprof "github.com/blackfireio/go-blackfire/pprof_reader/internal/profile"
-	"github.com/blackfireio/osinfo"
 )
 
-// Edge represents an edge of the graph, which is a call from one function to another.
-type Edge struct {
-	Count                   int64
-	CumulativeWalltimeValue int64
-	CumulativeMemValue      int64
-	FromFunction            string
-	ToFunction              string
+type Function struct {
+	Name string
+
+	// Memory usage is aggregated into one overall cost per function (stored as
+	// MemoryCost here), so we must keep track of the number of times a function
+	// is referenced in a profile, and then "distribute" the cost based on the
+	// number of times it is referenced across the sample call stacks of a
+	// profile. This value is calculated and cached in DistributedMemoryCost
+	MemoryCost            uint64
+	DistributedMemoryCost uint64
+	ReferenceCount        int
 }
 
-func NewEdge(fromFunction string, toFunction string) *Edge {
-	return &Edge{
-		FromFunction: fromFunction,
-		ToFunction:   toFunction,
+func (f *Function) AddReferences(count int) {
+	f.ReferenceCount += count
+	f.DistributedMemoryCost = f.MemoryCost / uint64(f.ReferenceCount)
+}
+
+func (f *Function) String() string {
+	return f.Name
+}
+
+func newFunctionWithMemoryCost(f *pprof.Function, memoryCost uint64) *Function {
+	return &Function{
+		Name:       f.Name,
+		MemoryCost: memoryCost,
 	}
 }
 
-func (e *Edge) AddCount(count int64) {
-	e.Count += count
+type Sample struct {
+	Count    int
+	CPUTime  uint64
+	MemUsage uint64
+	Stack    []*Function
 }
 
-func (e *Edge) AddWalltimeValue(value int64) {
-	e.CumulativeWalltimeValue += value
-}
-
-func (e *Edge) AddMemValue(value int64) {
-	e.CumulativeMemValue += value
-}
-
-func (e *Edge) SetMinimumCount() {
-	// Because we are sampling, some of the functions in the stack won't have
-	// actually been sampled. We just set their counts to 1.
-	if e.Count == 0 {
-		e.Count = 1
+func newSample(count int, cpuTime uint64, stack []*Function) *Sample {
+	return &Sample{
+		Count:   count,
+		CPUTime: cpuTime,
+		Stack:   stack,
 	}
 }
 
-// EntryPoint represents a top level entry point into a series of edges.
-// All contained edges originate from this entry point.
-type EntryPoint struct {
-	Name     string
-	WTValue  int64
-	MemValue int64
-	Edges    map[string]*Edge
-}
-
-func NewEntryPoint(name string) *EntryPoint {
-	return &EntryPoint{
-		Name:  name,
-		Edges: make(map[string]*Edge),
-	}
-}
-
-func (ep *EntryPoint) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
-	// EntryPoint's value mesures how much of the profile it encompasses
-	ep.WTValue += wtValue
-	ep.MemValue += memValue
-
-	fromFunction := ""
-	var edge *Edge
-
-	generateEdgeName := func(fromFunction string, toFunction string) string {
-		if fromFunction != "" {
-			return fmt.Sprintf("%s==>%s", fromFunction, toFunction)
-		}
-		return toFunction
-	}
-
-	// Every edge from the stack gets value applied to it.
-	for _, toFunction := range stack {
-		edgeName := generateEdgeName(fromFunction, toFunction)
-		var ok bool
-		edge, ok = ep.Edges[edgeName]
-		if !ok {
-			edge = NewEdge(fromFunction, toFunction)
-			ep.Edges[edgeName] = edge
-		}
-		edge.AddWalltimeValue(wtValue)
-		edge.AddMemValue(memValue)
-		fromFunction = toFunction
-	}
-
-	// Only the leaf edge gets count applied to it.
-	edge.AddCount(count)
-}
-
-func (ep *EntryPoint) SetMinimumCounts() {
-	for _, edge := range ep.Edges {
-		edge.SetMinimumCount()
+func (s *Sample) CloneWithStack(stack []*Function) *Sample {
+	return &Sample{
+		Count:    s.Count,
+		CPUTime:  s.CPUTime,
+		MemUsage: s.MemUsage,
+		Stack:    stack,
 	}
 }
 
 // Profle contains a set of entry points, which collectively contain all sampled data
 type Profile struct {
-	EntryPoints             map[string]*EntryPoint
-	EntryPointsLargeToSmall []*EntryPoint
-	CpuSampleRate           int
+	CpuSampleRateHz int
+	USecPerSample   uint64
+	Samples         []*Sample
+	// Note: Matching by ID didn't work since there seems to be some duplication
+	// in the pprof data. We match by name instead since it's guaranteed unique.
+	Functions map[string]*Function
 }
 
 func NewProfile() *Profile {
 	return &Profile{
-		EntryPoints: make(map[string]*EntryPoint),
+		Functions: make(map[string]*Function),
 	}
+}
+
+func (p *Profile) CloneWithSamples(samples []*Sample) *Profile {
+	return &Profile{
+		CpuSampleRateHz: p.CpuSampleRateHz,
+		USecPerSample:   p.USecPerSample,
+		Samples:         samples,
+		Functions:       p.Functions,
+	}
+}
+
+func (p *Profile) getMatchingFunction(pf *pprof.Function) *Function {
+	f, ok := p.Functions[pf.Name]
+	if !ok {
+		f = &Function{
+			Name: pf.Name,
+		}
+		p.Functions[pf.Name] = f
+	}
+
+	return f
+}
+
+func (p *Profile) setCPUSampleRate(hz int) {
+	p.CpuSampleRateHz = hz
+	p.USecPerSample = uint64(1000000 / float64(p.CpuSampleRateHz))
 }
 
 func (p *Profile) HasData() bool {
-	return len(p.EntryPoints) > 0
+	return len(p.Samples) > 0
 }
 
-func (p *Profile) biggestImpactEntryPoint() string {
-	if len(p.EntryPointsLargeToSmall) == 0 {
-		panic(fmt.Errorf("No entry points found!"))
-	}
-	return p.EntryPointsLargeToSmall[0].Name
-}
+// Read a pprof format profile and convert to our internal format.
+func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
+	profile := NewProfile()
 
-func (p *Profile) AddStatisticalSample(stack []string, count int64, wtValue int64, memValue int64) {
-	entryPointName := stack[0]
-	entryPoint, ok := p.EntryPoints[entryPointName]
-	if !ok {
-		entryPoint = NewEntryPoint(entryPointName)
-		p.EntryPoints[entryPointName] = entryPoint
-	}
-	entryPoint.AddStatisticalSample(stack, count, wtValue, memValue)
-}
-
-func (p *Profile) Finish() {
-	p.EntryPointsLargeToSmall = make([]*EntryPoint, 0, len(p.EntryPoints))
-	for _, entryPoint := range p.EntryPoints {
-		entryPoint.SetMinimumCounts()
-		p.EntryPointsLargeToSmall = append(p.EntryPointsLargeToSmall, entryPoint)
-	}
-
-	sort.Slice(p.EntryPointsLargeToSmall, func(i, j int) bool {
-		return p.EntryPointsLargeToSmall[i].WTValue > p.EntryPointsLargeToSmall[j].WTValue
-	})
-}
-
-func decycleStack(stack []string) {
-	seen := make(map[string]int)
-	for i, v := range stack {
-		if dupCount, ok := seen[v]; ok {
-			stack[i] = fmt.Sprintf("%s@%d", v, dupCount)
-			seen[v] = dupCount + 1
+	for _, buffer := range memBuffers {
+		if p, err := pprof.Parse(buffer); err != nil {
+			return nil, err
 		} else {
-			seen[v] = 1
+			profile.addMemorySamples(p)
+		}
+	}
+
+	for _, buffer := range cpuBuffers {
+		if p, err := pprof.Parse(buffer); err != nil {
+			return nil, err
+		} else {
+			profile.USecPerSample = uint64(p.Period) / 1000
+			profile.CpuSampleRateHz = int(1000000 / profile.USecPerSample)
+			profile.addCPUSamples(p)
+		}
+	}
+
+	profile.postProcessSamples()
+	return profile, nil
+}
+
+func (p *Profile) addMemorySamples(pp *pprof.Profile) {
+	const valueIndex = 1
+	for _, sample := range pp.Sample {
+		memUsage := sample.Value[valueIndex]
+		for _, loc := range sample.Location {
+			for _, line := range loc.Line {
+				f := p.getMatchingFunction(line.Function)
+				f.MemoryCost += uint64(memUsage)
+			}
 		}
 	}
 }
 
-func convertPProfsToInternal(cpuProfiles, memProfiles []*pprof.Profile) *Profile {
+func (p *Profile) addCPUSamples(pp *pprof.Profile) {
 	// All pprof profiles have count in index 0, and whatever value in index 1.
 	// I haven't encountered a profile with sample value index > 1, and in fact
 	// it cannot happen the way runtime.pprof does profiling atm.
 	const countIndex = 0
 	const valueIndex = 1
 
-	generateFullStack := func(sample *pprof.Sample) []string {
+	for _, sample := range pp.Sample {
+		count := sample.Value[countIndex]
+		if count < 1 {
+			count = 1
+		}
+		cpuTime := uint64(sample.Value[valueIndex]) / 1000 // Convert ns to us
+
 		// A sample contains a stack trace, which is made of locations.
 		// A location has one or more lines (>1 if functions are inlined).
 		// Each line points to a function.
-		stack := make([]string, 0, 10)
-		stack = append(stack, "go")
+		stack := make([]*Function, 0, 10)
+
+		// PProf stack data is stored leaf-first. We need it to be root-first.
 		for i := len(sample.Location) - 1; i >= 0; i-- {
 			location := sample.Location[i]
 			for j := len(location.Line) - 1; j >= 0; j-- {
 				line := location.Line[j]
-				stack = append(stack, line.Function.Name)
+				f := p.getMatchingFunction(line.Function)
+				f.AddReferences(int(count))
+				stack = append(stack, f)
 			}
 		}
-		decycleStack(stack)
-		return stack
+
+		p.Samples = append(p.Samples, newSample(int(count), cpuTime, stack))
 	}
-
-	profile := NewProfile()
-
-	for _, cpuProfile := range cpuProfiles {
-		for _, sample := range cpuProfile.Sample {
-			profile.AddStatisticalSample(generateFullStack(sample), sample.Value[countIndex], sample.Value[valueIndex], 0)
-		}
-	}
-
-	for _, memProfile := range memProfiles {
-		for _, sample := range memProfile.Sample {
-			profile.AddStatisticalSample(generateFullStack(sample), 0, 0, sample.Value[valueIndex])
-		}
-	}
-
-	profile.Finish()
-	return profile
 }
 
-// Read a pprof format profile and convert to our internal format.
-func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
-	cpuProfiles := []*pprof.Profile{}
-	for _, buffer := range cpuBuffers {
-		if profile, err := pprof.Parse(buffer); err != nil {
-			return nil, err
+func (p *Profile) postProcessSamples() {
+	for _, sample := range p.Samples {
+		decycleStack(sample.Stack)
+		memUsage := uint64(0)
+		for _, f := range sample.Stack {
+			memUsage += f.DistributedMemoryCost
+		}
+		sample.MemUsage = memUsage
+	}
+}
+
+// Decycle a sample's call stack.
+// If the same function is encountered multiple times in a goroutine stack,
+// create duplicates with @1, @2, etc appended to the name so that they show
+// up as different names in the BF visualizer.
+func decycleStack(stack []*Function) {
+	seen := make(map[string]int)
+	for i, f := range stack {
+		if dupCount, ok := seen[f.Name]; ok {
+			stack[i] = &Function{
+				Name:                  fmt.Sprintf("%s@%d", f.Name, dupCount),
+				MemoryCost:            f.MemoryCost,
+				DistributedMemoryCost: f.DistributedMemoryCost,
+				ReferenceCount:        f.ReferenceCount,
+			}
+			seen[f.Name] = dupCount + 1
 		} else {
-			cpuProfiles = append(cpuProfiles, profile)
+			seen[f.Name] = 1
 		}
 	}
-
-	memProfiles := []*pprof.Profile{}
-	for _, buffer := range memBuffers {
-		if profile, err := pprof.Parse(buffer); err != nil {
-			return nil, err
-		} else {
-			memProfiles = append(memProfiles, profile)
-		}
-	}
-
-	profile := convertPProfsToInternal(cpuProfiles, memProfiles)
-	return profile, nil
 }
 
 func getBasename(path string) string {
@@ -294,69 +275,4 @@ func DumpProfiles(cpuBuffers, memBuffers []*bytes.Buffer, dstDir string) (err er
 		}
 	}
 	return
-}
-
-func generateContextStringFromSlice(args []string) string {
-	s := strings.Builder{}
-	s.WriteString("script=")
-	s.WriteString(url.QueryEscape(args[0]))
-	for i := 0; i < len(args); i++ {
-		argv := url.QueryEscape(fmt.Sprintf("argv[%d]", i))
-		value := url.QueryEscape(args[i])
-		s.WriteString(fmt.Sprintf("&%s=%s", argv, value))
-	}
-
-	return s.String()
-}
-
-func generateContextString() string {
-	return generateContextStringFromSlice(os.Args)
-}
-
-// Write a parsed profile out as a Blackfire profile.
-func WriteBFFormat(profile *Profile, w io.Writer) error {
-	osInfo, err := osinfo.GetOSInfo()
-	if err != nil {
-		return err
-	}
-
-	// TODO: Profile title should be user-generated somehow
-	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
-
-	headers := make(map[string]string)
-	headers["Cost-Dimensions"] = "cpu pmu"
-	headers["graph-root-id"] = profile.biggestImpactEntryPoint()
-	headers["probed-os"] = osInfo.Name
-	headers["profiler-type"] = "statistical"
-	headers["probed-language"] = "go"
-	headers["probed-runtime"] = runtime.Version()
-	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRate)
-	// headers["Profile-Title"] = profileTitle
-	headers["Context"] = generateContextString()
-
-	bufW := bufio.NewWriter(w)
-
-	if _, err := bufW.WriteString("file-format: BlackfireProbe\n"); err != nil {
-		return err
-	}
-
-	for k, v := range headers {
-		if _, err := bufW.WriteString(fmt.Sprintf("%s: %s\n", k, v)); err != nil {
-			return err
-		}
-	}
-
-	if _, err := bufW.WriteString("\n"); err != nil {
-		return err
-	}
-
-	entryPoint := profile.EntryPoints[headers["graph-root-id"]]
-	for name, edge := range entryPoint.Edges {
-		if _, err := bufW.WriteString(fmt.Sprintf("%s//%d %d %d\n", name, edge.Count, edge.CumulativeWalltimeValue/1000, edge.CumulativeMemValue)); err != nil {
-			return err
-		}
-
-	}
-
-	return bufW.Flush()
 }

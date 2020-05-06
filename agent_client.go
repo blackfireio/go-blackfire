@@ -3,6 +3,7 @@ package blackfire
 // TODO: AgentTimeout
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/blackfireio/go-blackfire/bf_format"
+	"github.com/blackfireio/go-blackfire/pprof_reader"
 	"github.com/blackfireio/osinfo"
 	"github.com/rs/zerolog"
 )
@@ -32,6 +35,7 @@ type agentClient struct {
 	links               []*linksMap
 	profiles            []*Profile
 	logger              *zerolog.Logger
+	signingResponse     signingResponseData
 }
 
 type linksMap map[string]map[string]string
@@ -45,7 +49,7 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 	signingEndpoint := configuration.HTTPEndpoint
 	signingEndpoint.Path = path.Join(signingEndpoint.Path, "/api/v1/signing")
 
-	return &agentClient{
+	a := &agentClient{
 		agentNetwork:        agentNetwork,
 		agentAddress:        agentAddress,
 		signingEndpoint:     signingEndpoint,
@@ -56,7 +60,9 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 		logger:              configuration.Logger,
 		serverID:            configuration.ServerID,
 		serverToken:         configuration.ServerToken,
-	}, nil
+	}
+	a.signingResponse.Init()
+	return a, nil
 }
 
 func (c *agentClient) CurrentBlackfireQuery() (string, error) {
@@ -68,11 +74,11 @@ func (c *agentClient) CurrentBlackfireQuery() (string, error) {
 		c.firstBlackfireQuery = ""
 		return c.rawBlackfireQuery, nil
 	}
-	query, err := c.createRequest()
+	bfQuery, err := c.sendSigningRequest()
 	if err != nil {
 		return "", err
 	}
-	c.rawBlackfireQuery = query
+	c.rawBlackfireQuery = bfQuery
 	return c.rawBlackfireQuery, nil
 }
 
@@ -82,6 +88,7 @@ func (c *agentClient) LastProfiles() []*Profile {
 		if profile == nil {
 			continue
 		}
+		c.logger.Debug().Msgf("Blackfire: Get profile data for %s", profile.UUID)
 		if err := profile.load(c.signingAuth); err != nil {
 			c.logger.Debug().Msgf("Blackfire: Unable to get profile data for %s: %s", profile.UUID, err)
 			continue
@@ -89,6 +96,10 @@ func (c *agentClient) LastProfiles() []*Profile {
 		profiles = append(profiles, profile)
 	}
 	return profiles
+}
+
+func (c *agentClient) ProbeOptions() bf_format.ProbeOptions {
+	return c.signingResponse.Options
 }
 
 func (c *agentClient) getGoVersion() string {
@@ -100,6 +111,9 @@ func (c *agentClient) getBlackfireProbeHeader(hasBlackfireYaml bool) string {
 	builder.WriteString(c.getGoVersion())
 	if hasBlackfireYaml {
 		builder.WriteString(", blackfire_yml")
+	}
+	if c.signingResponse.Options.IsTimespanFlagSet() {
+		builder.WriteString(", timespan")
 	}
 	return builder.String()
 }
@@ -205,7 +219,7 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	return
 }
 
-func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
+func (c *agentClient) SendProfile(profile *pprof_reader.Profile) (err error) {
 	var conn *agentConnection
 	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress, c.logger); err != nil {
 		return
@@ -224,13 +238,19 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 		return
 	}
 
-	var response map[string]url.Values
+	var response http.Header
 	if response, err = conn.ReadResponse(); err != nil {
 		return err
 	}
-	if errResp, ok := response["Blackfire-Error"]; ok {
-		return fmt.Errorf("Blackfire-Error: %s", errResp)
+	if response.Get("Blackfire-Error") != "" {
+		return fmt.Errorf("Blackfire-Error: %s", response.Get("Blackfire-Error"))
 	}
+
+	profileBuffer := new(bytes.Buffer)
+	if err := bf_format.WriteBFFormat(profile, profileBuffer, c.ProbeOptions()); err != nil {
+		return err
+	}
+	encodedProfile := profileBuffer.Bytes()
 
 	c.logger.Debug().Str("contents", string(encodedProfile)).Msg("Blackfire: Send profile")
 	if err = conn.WriteRawData(encodedProfile); err != nil {
@@ -240,7 +260,7 @@ func (c *agentClient) SendProfile(encodedProfile []byte) (err error) {
 	return
 }
 
-func (c *agentClient) createRequest() (string, error) {
+func (c *agentClient) sendSigningRequest() (blackfireQuery string, err error) {
 	var response *http.Response
 	c.logger.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
 	request, err := http.NewRequest("POST", c.signingEndpoint.String(), nil)
@@ -263,30 +283,25 @@ func (c *agentClient) createRequest() (string, error) {
 		return "", err
 	}
 	c.logger.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
-	var signingResponse struct {
-		UUID        string   `json:"uuid"`
-		QueryString string   `json:"query_string"`
-		Links       linksMap `json:"_links"`
-	}
-	err = json.Unmarshal(responseData, &signingResponse)
+	err = json.Unmarshal(responseData, &c.signingResponse)
 	if err != nil {
 		err = fmt.Errorf("JSON error: %v", err)
 		return "", err
 	}
-	if signingResponse.QueryString == "" {
+	if c.signingResponse.QueryString == "" {
 		return "", fmt.Errorf("Signing response blackfire query was empty")
 	}
-	profileURL, ok := signingResponse.Links["profile"]
+	profileURL, ok := c.signingResponse.Links["profile"]
 	if !ok {
 		return "", fmt.Errorf("Signing response blackfire profile URL was empty")
 	}
-	c.links = append([]*linksMap{&signingResponse.Links}, c.links[:9]...)
+	c.links = append([]*linksMap{&c.signingResponse.Links}, c.links[:9]...)
 	c.profiles = append([]*Profile{{
-		UUID:   signingResponse.UUID,
-		URL:    signingResponse.Links["graph_url"]["href"],
+		UUID:   c.signingResponse.UUID,
+		URL:    c.signingResponse.Links["graph_url"]["href"],
 		APIURL: profileURL["href"],
 	}}, c.profiles[:9]...)
-	return signingResponse.QueryString, nil
+	return c.signingResponse.QueryString, nil
 }
 
 func parseNetworkAddressString(agentSocket string) (network string, address string, err error) {
@@ -321,4 +336,21 @@ func getProfileOSHeaderValue() (values url.Values, err error) {
 	}
 
 	return values, nil
+}
+
+type signingResponseData struct {
+	UserID      string                 `json:"userId"`
+	ProfileSlot string                 `json:"profileSlot"`
+	CollabToken string                 `json:"collabToken"`
+	Agents      []string               `json:"agents"`
+	Expires     uint64                 `json:"expires,string"`
+	Signature   string                 `json:"signature"`
+	Options     bf_format.ProbeOptions `json:"options"`
+	Links       linksMap               `json:"_links"`
+	UUID        string                 `json:"uuid"`
+	QueryString string                 `json:"query_string"`
+}
+
+func (s *signingResponseData) Init() {
+	s.Options = make(bf_format.ProbeOptions)
 }

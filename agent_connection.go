@@ -3,7 +3,10 @@ package blackfire
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 
@@ -56,23 +59,16 @@ func (c *agentConnection) ReadEncodedHeader() (name string, urlEncodedValue stri
 	return
 }
 
-func (c *agentConnection) ReadResponse() (map[string]url.Values, error) {
-	response := make(map[string]url.Values)
-
-	for {
-		name, urlEncodedValue, err := c.ReadEncodedHeader()
-		if err != nil {
-			return nil, err
+func (c *agentConnection) ReadResponse() (http.Header, error) {
+	tp := textproto.NewReader(c.reader)
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
 		}
-		if name == "" {
-			break
-		}
-		response[name], err = url.ParseQuery(urlEncodedValue)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
-	return response, nil
+	return http.Header(mimeHeader), nil
 }
 
 func (c *agentConnection) WriteEncodedHeader(name string, urlEncodedValue string) error {

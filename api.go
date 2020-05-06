@@ -71,3 +71,9 @@ func EndNoWait() {
 func GenerateSubProfileQuery() (string, error) {
 	return globalProbe.GenerateSubProfileQuery()
 }
+
+// globalProbe is the access point for all probe functionality. The API, signal,
+// and HTTP interfaces perform all operations by proxying to globalProbe. This
+// ensures that mutexes and other guards are respected, and no interface can
+// trigger functionality that others can't, or in a way that others can't.
+var globalProbe = newProbe()
