@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/url"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"sync"
@@ -43,7 +44,10 @@ type probe struct {
 	profileEndCallback    func()
 	cpuSampleRate         int
 	ender                 Ender
+	disabledFromPanic     bool
 }
+
+var errDisabledFromPanic = errors.Errorf("Probe has been disabled due to a previous panic. Please check the logs for details.")
 
 type Ender interface {
 	End()
@@ -91,6 +95,15 @@ func (p *probe) IsProfiling() bool {
 }
 
 func (p *probe) EnableNowFor(duration time.Duration) (err error) {
+	if p.disabledFromPanic {
+		return errDisabledFromPanic
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = p.handlePanic(r)
+		}
+	}()
+
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -145,6 +158,15 @@ func (p *probe) Enable() (err error) {
 }
 
 func (p *probe) Disable() (err error) {
+	if p.disabledFromPanic {
+		return errDisabledFromPanic
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = p.handlePanic(r)
+		}
+	}()
+
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -175,6 +197,15 @@ func (p *probe) Disable() (err error) {
 }
 
 func (p *probe) EndNoWait() (err error) {
+	if p.disabledFromPanic {
+		return errDisabledFromPanic
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = p.handlePanic(r)
+		}
+	}()
+
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -205,6 +236,15 @@ func (p *probe) EndNoWait() (err error) {
 }
 
 func (p *probe) End() (err error) {
+	if p.disabledFromPanic {
+		return errDisabledFromPanic
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = p.handlePanic(r)
+		}
+	}()
+
 	if err = p.configuration.load(); err != nil {
 		return
 	}
@@ -239,7 +279,17 @@ func (p *probe) End() (err error) {
 	return
 }
 
-func (p *probe) GenerateSubProfileQuery() (string, error) {
+func (p *probe) GenerateSubProfileQuery() (s string, err error) {
+	if p.disabledFromPanic {
+		err = errDisabledFromPanic
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = p.handlePanic(r)
+		}
+	}()
+
 	if err := p.prepareAgentClient(); err != nil {
 		return "", err
 	}
@@ -482,4 +532,11 @@ func (p *probe) onProfileDisableTriggered(shouldEndProfile bool, callback func()
 	if callback != nil {
 		go callback()
 	}
+}
+
+func (p *probe) handlePanic(r interface{}) error {
+	p.disabledFromPanic = true
+	p.configuration.Logger.Error().Msgf("Unexpected panic %v. Probe has been disabled.", r)
+	p.configuration.Logger.Error().Msg(string(debug.Stack()))
+	return fmt.Errorf("Unexpected panic %v. Probe has been disabled.", r)
 }
