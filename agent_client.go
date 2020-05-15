@@ -24,18 +24,17 @@ import (
 )
 
 type agentClient struct {
-	agentNetwork        string
-	agentAddress        string
-	signingEndpoint     *url.URL
-	signingAuth         string
-	serverID            string
-	serverToken         string
-	firstBlackfireQuery string
-	rawBlackfireQuery   string
-	links               []*linksMap
-	profiles            []*Profile
-	logger              *zerolog.Logger
-	signingResponse     signingResponseData
+	agentNetwork              string
+	agentAddress              string
+	signingEndpoint           *url.URL
+	signingAuth               string
+	serverID                  string
+	serverToken               string
+	links                     []*linksMap
+	profiles                  []*Profile
+	logger                    *zerolog.Logger
+	signingResponse           *signingResponseData
+	signingResponseIsConsumed bool
 }
 
 type linksMap map[string]map[string]string
@@ -49,37 +48,32 @@ func NewAgentClient(configuration *Configuration) (*agentClient, error) {
 	signingEndpoint := configuration.HTTPEndpoint
 	signingEndpoint.Path = path.Join(signingEndpoint.Path, "/api/v1/signing")
 
-	a := &agentClient{
-		agentNetwork:        agentNetwork,
-		agentAddress:        agentAddress,
-		signingEndpoint:     signingEndpoint,
-		signingAuth:         fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
-		firstBlackfireQuery: configuration.BlackfireQuery,
-		links:               make([]*linksMap, 10),
-		profiles:            make([]*Profile, 10),
-		logger:              configuration.Logger,
-		serverID:            configuration.ServerID,
-		serverToken:         configuration.ServerToken,
+	signingResponse, err := signingResponseFromBFQuery(configuration.BlackfireQuery)
+	if err != nil {
+		return nil, err
 	}
-	a.signingResponse.Init()
+
+	a := &agentClient{
+		agentNetwork:              agentNetwork,
+		agentAddress:              agentAddress,
+		signingEndpoint:           signingEndpoint,
+		signingAuth:               fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(configuration.ClientID+":"+configuration.ClientToken))),
+		links:                     make([]*linksMap, 10),
+		profiles:                  make([]*Profile, 10),
+		logger:                    configuration.Logger,
+		serverID:                  configuration.ServerID,
+		serverToken:               configuration.ServerToken,
+		signingResponse:           signingResponse,
+		signingResponseIsConsumed: signingResponse == nil,
+	}
 	return a, nil
 }
 
 func (c *agentClient) CurrentBlackfireQuery() (string, error) {
-	if c.rawBlackfireQuery != "" {
-		return c.rawBlackfireQuery, nil
-	}
-	if c.firstBlackfireQuery != "" {
-		c.rawBlackfireQuery = c.firstBlackfireQuery
-		c.firstBlackfireQuery = ""
-		return c.rawBlackfireQuery, nil
-	}
-	bfQuery, err := c.sendSigningRequest()
-	if err != nil {
+	if err := c.updateSigningRequest(); err != nil {
 		return "", err
 	}
-	c.rawBlackfireQuery = bfQuery
-	return c.rawBlackfireQuery, nil
+	return c.signingResponse.QueryString, nil
 }
 
 func (c *agentClient) LastProfiles() []*Profile {
@@ -150,8 +144,9 @@ func (c *agentClient) sendBlackfireYaml(conn *agentConnection, contents []byte) 
 
 func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	// https://private.blackfire.io/docs/knowledge-base/profiling-protocol/#profile-creation-prolog
-	if _, err := c.CurrentBlackfireQuery(); err != nil {
-		return err
+	bfQuery, err := c.CurrentBlackfireQuery()
+	if err != nil {
+		return
 	}
 
 	var osVersion url.Values
@@ -171,12 +166,14 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	if c.serverID != "" && c.serverToken != "" {
 		orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Auth: %v:%v", c.serverID, c.serverToken))
 	}
-	orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Query: %s", c.rawBlackfireQuery))
+	orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Query: %s", bfQuery))
 	orderedHeaders = append(orderedHeaders, fmt.Sprintf("Blackfire-Probe: %s", c.getBlackfireProbeHeader(hasBlackfireYaml)))
-	c.rawBlackfireQuery = ""
 
 	unorderedHeaders := make(map[string]interface{})
 	unorderedHeaders["os-version"] = osVersion
+
+	// We've now consumed the current Blackfire query, and must fetch a new one next time.
+	c.signingResponseIsConsumed = true
 
 	// Send the ordered headers first, then wait for the Blackfire-Response,
 	// then send the unordered headers.
@@ -260,40 +257,43 @@ func (c *agentClient) SendProfile(profile *pprof_reader.Profile) (err error) {
 	return
 }
 
-func (c *agentClient) sendSigningRequest() (blackfireQuery string, err error) {
+func (c *agentClient) updateSigningRequest() (err error) {
+	if !c.signingResponseIsConsumed {
+		return
+	}
+
 	var response *http.Response
 	c.logger.Debug().Msgf("Blackfire: Get authorization from %s", c.signingEndpoint)
 	request, err := http.NewRequest("POST", c.signingEndpoint.String(), nil)
 	if err != nil {
-		return "", err
+		return
 	}
 	request.Header.Add("Authorization", c.signingAuth)
 	c.logger.Debug().Msg("Blackfire: Send signing request")
 	client := http.DefaultClient
 	response, err = client.Do(request)
 	if err != nil {
-		return "", err
+		return
 	}
 	if response.StatusCode != 201 {
-		return "", fmt.Errorf("Signing request to %s failed: %s", c.signingEndpoint, response.Status)
+		return fmt.Errorf("Signing request to %s failed: %s", c.signingEndpoint, response.Status)
 	}
 	var responseData []byte
 	responseData, err = ioutil.ReadAll(response.Body)
 	if err != nil {
-		return "", err
+		return
 	}
 	c.logger.Debug().Interface("response", string(responseData)).Msg("Blackfire: Receive signing response")
 	err = json.Unmarshal(responseData, &c.signingResponse)
 	if err != nil {
-		err = fmt.Errorf("JSON error: %v", err)
-		return "", err
+		return fmt.Errorf("JSON error: %v", err)
 	}
 	if c.signingResponse.QueryString == "" {
-		return "", fmt.Errorf("Signing response blackfire query was empty")
+		return fmt.Errorf("Signing response blackfire query was empty")
 	}
 	profileURL, ok := c.signingResponse.Links["profile"]
 	if !ok {
-		return "", fmt.Errorf("Signing response blackfire profile URL was empty")
+		return fmt.Errorf("Signing response blackfire profile URL was empty")
 	}
 	c.links = append([]*linksMap{&c.signingResponse.Links}, c.links[:9]...)
 	c.profiles = append([]*Profile{{
@@ -301,7 +301,62 @@ func (c *agentClient) sendSigningRequest() (blackfireQuery string, err error) {
 		URL:    c.signingResponse.Links["graph_url"]["href"],
 		APIURL: profileURL["href"],
 	}}, c.profiles[:9]...)
-	return c.signingResponse.QueryString, nil
+
+	c.signingResponseIsConsumed = false
+
+	return
+}
+
+var nonOptionQueryFields = map[string]bool{
+	"expires":     true,
+	"userId":      true,
+	"agentIds":    true,
+	"collabToken": true,
+	"signature":   true,
+}
+
+func signingResponseFromBFQuery(query string) (response *signingResponseData, err error) {
+	if query == "" {
+		return
+	}
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return
+	}
+
+	firstValue := func(values url.Values, key string) string {
+		if vArr := values[key]; vArr != nil {
+			if len(vArr) > 0 {
+				return vArr[0]
+			}
+		}
+		return ""
+	}
+
+	expires, err := strconv.ParseUint(firstValue(values, "expires"), 10, 64)
+	if err != nil {
+		return
+	}
+
+	response = newSigningResponseData()
+	response.Agents = values["agentIds"]
+	response.CollabToken = firstValue(values, "collabToken")
+	response.Expires = expires
+	response.QueryString = query
+	response.Signature = firstValue(values, "signature")
+	response.UserID = firstValue(values, "userId")
+
+	for key, arrValues := range values {
+		if nonOptionQueryFields[key] {
+			continue
+		}
+		if len(arrValues) < 1 {
+			continue
+		}
+		response.Options[key] = arrValues[0]
+	}
+
+	return
 }
 
 func parseNetworkAddressString(agentSocket string) (network string, address string, err error) {
@@ -351,6 +406,8 @@ type signingResponseData struct {
 	QueryString string                 `json:"query_string"`
 }
 
-func (s *signingResponseData) Init() {
+func newSigningResponseData() *signingResponseData {
+	s := new(signingResponseData)
 	s.Options = make(bf_format.ProbeOptions)
+	return s
 }
