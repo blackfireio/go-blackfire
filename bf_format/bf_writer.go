@@ -99,7 +99,6 @@ func writeSamples(profile *pprof_reader.Profile, bufW *bufio.Writer) (err error)
 
 	for _, sample := range profile.Samples {
 		totalCPUTime += sample.CPUTime
-		totalMemUsage += sample.MemUsage
 
 		if len(sample.Stack) == 0 {
 			continue
@@ -112,15 +111,18 @@ func writeSamples(profile *pprof_reader.Profile, bufW *bufio.Writer) (err error)
 			return
 		}
 
-		for iStack, f := range sample.Stack {
-			if iStack == 0 {
-				continue
-			}
+		stackMemUsage := uint64(0)
+		// Skip index 0 because every edge needs a begin and end node
+		for iStack := len(sample.Stack) - 1; iStack > 0; iStack-- {
+			f := sample.Stack[iStack]
+			edgeMemCost := f.DistributedMemoryCost * uint64(sample.Count)
+			totalMemUsage += edgeMemCost
+			stackMemUsage += edgeMemCost
 
 			fPrev := sample.Stack[iStack-1]
 			if _, err = bufW.WriteString(fmt.Sprintf("%s==>%s//%d %d %d\n",
 				fPrev.Name, f.Name,
-				sample.Count, sample.CPUTime, sample.MemUsage)); err != nil {
+				sample.Count, sample.CPUTime, stackMemUsage)); err != nil {
 				return
 			}
 		}

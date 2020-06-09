@@ -32,13 +32,6 @@ func (f *Function) String() string {
 	return f.Name
 }
 
-func newFunctionWithMemoryCost(f *pprof.Function, memoryCost uint64) *Function {
-	return &Function{
-		Name:       f.Name,
-		MemoryCost: memoryCost,
-	}
-}
-
 type Sample struct {
 	Count    int
 	CPUTime  uint64
@@ -136,14 +129,14 @@ func ReadFromPProf(cpuBuffers, memBuffers []*bytes.Buffer) (*Profile, error) {
 }
 
 func (p *Profile) addMemorySamples(pp *pprof.Profile) {
-	const valueIndex = 1
+	const valueIndex = 3
 	for _, sample := range pp.Sample {
 		memUsage := sample.Value[valueIndex]
-		for _, loc := range sample.Location {
-			for _, line := range loc.Line {
-				f := p.getMatchingFunction(line.Function)
-				f.MemoryCost += uint64(memUsage)
-			}
+		if memUsage > 0 {
+			loc := sample.Location[0]
+			line := loc.Line[0]
+			f := p.getMatchingFunction(line.Function)
+			f.MemoryCost += uint64(memUsage)
 		}
 	}
 }
@@ -156,9 +149,9 @@ func (p *Profile) addCPUSamples(pp *pprof.Profile) {
 	const valueIndex = 1
 
 	for _, sample := range pp.Sample {
-		count := sample.Value[countIndex]
-		if count < 1 {
-			count = 1
+		callCount := sample.Value[countIndex]
+		if callCount < 1 {
+			callCount = 1
 		}
 		cpuTime := uint64(sample.Value[valueIndex]) / 1000 // Convert ns to us
 
@@ -173,12 +166,12 @@ func (p *Profile) addCPUSamples(pp *pprof.Profile) {
 			for j := len(location.Line) - 1; j >= 0; j-- {
 				line := location.Line[j]
 				f := p.getMatchingFunction(line.Function)
-				f.AddReferences(int(count))
+				f.AddReferences(int(callCount))
 				stack = append(stack, f)
 			}
 		}
 
-		p.Samples = append(p.Samples, newSample(int(count), cpuTime, stack))
+		p.Samples = append(p.Samples, newSample(int(callCount), cpuTime, stack))
 	}
 }
 
