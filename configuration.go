@@ -1,10 +1,8 @@
 package blackfire
 
 import (
-	"crypto/sha1"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -13,7 +11,6 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -212,11 +209,6 @@ func (c *Configuration) configureFromEnv() {
 
 	if v := c.readEnvVar("BLACKFIRE_QUERY"); v != "" {
 		c.BlackfireQuery = v
-		if strings.Contains(v, "diag=1") {
-			if err := c.enableDiagMode(v); err != nil {
-				c.Logger.Debug().Msg(err.Error())
-			}
-		}
 		os.Unsetenv("BLACKFIRE_QUERY")
 	}
 
@@ -320,25 +312,6 @@ func (c *Configuration) getStringFromIniSection(section *ini.Section, key string
 		return v
 	}
 	return ""
-}
-
-func (c *Configuration) enableDiagMode(q string) error {
-	c.Logger.Debug().Msg("Blackfire: Diag mode: detected")
-	parts := strings.Split(q, "signature=")
-	if len(parts) < 2 {
-		return errors.New("Blackfire: Diag mode: unable to parse the signature")
-	}
-	signature := strings.Split(parts[1], "&")[0]
-	h := sha1.New()
-	signature, _ = url.QueryUnescape(signature)
-	io.WriteString(h, signature)
-	diagWriter, err := os.OpenFile(filepath.Join(os.TempDir(), fmt.Sprintf("bf_%x", h.Sum(nil))), os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return errors.New("Blackfire: Diag mode: unable to open the diag file")
-	}
-	logger := c.Logger.Output(diagWriter).Level(zerolog.DebugLevel)
-	c.Logger = &logger
-	return nil
 }
 
 func parseSeconds(value string) (time.Duration, error) {
