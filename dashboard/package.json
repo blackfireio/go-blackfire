@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@testing-library/jest-dom": "^5.11.0",
-    "@testing-library/react": "^10.4.4",
+    "@testing-library/react": "^10.4.6",
     "@testing-library/user-event": "^12.0.11",
     "es6-promise": "^4.2.8",
     "immutable": "^4.0.0-rc.12",
@@ -16,7 +16,7 @@
     "react-scripts": "3.4.1",
     "redux": "^4.0.5",
     "redux-thunk": "^2.3.0",
-    "whatwg-fetch": "^3.1.0"
+    "whatwg-fetch": "^3.2.0"
   },
   "scripts": {
     "start": "react-app-rewired start --scripts-version react-scripts",
