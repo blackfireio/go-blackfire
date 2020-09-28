@@ -5,11 +5,11 @@
   "dependencies": {
     "@testing-library/jest-dom": "^5.11.4",
     "@testing-library/react": "^11.0.4",
-    "@testing-library/user-event": "^12.1.5",
+    "@testing-library/user-event": "^12.1.6",
     "es6-promise": "^4.2.8",
     "immutable": "^4.0.0-rc.12",
     "keymirror": "^0.1.1",
-    "moment": "^2.28.0",
+    "moment": "^2.29.0",
     "react": "^16.13.0",
     "react-dom": "^16.13.0",
     "react-redux": "^7.2.1",
