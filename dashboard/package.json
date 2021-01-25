@@ -5,7 +5,7 @@
   "dependencies": {
     "@testing-library/jest-dom": "^5.11.9",
     "@testing-library/react": "^11.2.3",
-    "@testing-library/user-event": "^12.6.0",
+    "@testing-library/user-event": "^12.6.2",
     "es6-promise": "^4.2.8",
     "immutable": "^4.0.0-rc.12",
     "keymirror": "^0.1.1",
@@ -48,6 +48,6 @@
     "react-app-rewired": "^2.1.8",
     "serve": "^11.3.2",
     "uglifyjs-webpack-plugin": "^2.2.0",
-    "webpack-cli": "^4.3.1"
+    "webpack-cli": "^4.4.0"
   }
 }
