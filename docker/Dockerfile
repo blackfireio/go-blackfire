@@ -1,4 +1,4 @@
-FROM node:10-stretch
+FROM node:14-stretch
 
 RUN curl -Lo /usr/local/bin/gosu https://github.com/tianon/gosu/releases/download/1.10/gosu-amd64 && chmod +x /usr/local/bin/gosu
 
