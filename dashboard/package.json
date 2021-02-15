@@ -5,7 +5,7 @@
   "dependencies": {
     "@testing-library/jest-dom": "^5.11.9",
     "@testing-library/react": "^11.2.5",
-    "@testing-library/user-event": "^12.6.3",
+    "@testing-library/user-event": "^12.7.1",
     "es6-promise": "^4.2.8",
     "immutable": "^4.0.0-rc.12",
     "keymirror": "^0.1.1",
