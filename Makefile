@@ -47,7 +47,7 @@ dashboard-eslint: dashboard/node_modules
 	@$(RUN_DASHBOARD) yarn eslint
 
 dashboard-build-docker:
-	$(COMPOSE) build
+	$(COMPOSE) build --pull --parallel
 
 down: ## Stop and remove containers, networks, images, and volumes
 	@$(COMPOSE) down
