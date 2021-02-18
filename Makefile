@@ -5,6 +5,9 @@ override project := $(shell echo $(project) | tr -d -c '[a-z0-9]' | cut -c 1-55)
 
 COMPOSE=docker-compose --project-directory . -f docker-compose.yml --project-name $(project)
 RUN_DASHBOARD=$(COMPOSE) run --rm --no-deps go_dashboard
+ifdef CI
+	COMPOSE_BUILD_OPT = --progress=plain
+endif
 
 .DEFAULT_GOAL := help
 
@@ -47,7 +50,7 @@ dashboard-eslint: dashboard/node_modules
 	@$(RUN_DASHBOARD) yarn eslint
 
 dashboard-build-docker:
-	$(COMPOSE) build --pull --parallel
+	$(COMPOSE) build --pull --parallel $(COMPOSE_BUILD_OPT)
 
 down: ## Stop and remove containers, networks, images, and volumes
 	@$(COMPOSE) down
