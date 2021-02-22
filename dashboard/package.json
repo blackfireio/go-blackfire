@@ -16,7 +16,7 @@
     "react-scripts": "4.0.2",
     "redux": "^4.0.5",
     "redux-thunk": "^2.3.0",
-    "whatwg-fetch": "^3.5.0"
+    "whatwg-fetch": "^3.6.1"
   },
   "scripts": {
     "start": "react-app-rewired start --scripts-version react-scripts",
