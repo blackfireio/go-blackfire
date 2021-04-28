@@ -487,7 +487,7 @@ func (p *probe) endProfile() error {
 	}
 
 	if !profile.HasData() {
-		logger.Debug().Msgf("Blackfire: No sample recorded")
+		logger.Debug().Msgf("Blackfire: No samples recorded")
 		return nil
 	}
 
