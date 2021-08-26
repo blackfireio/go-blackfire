@@ -143,7 +143,11 @@ func (c *Configuration) configureFromDefaults() {
 		case "windows":
 			c.AgentSocket = "tcp://127.0.0.1:8307"
 		case "darwin":
-			c.AgentSocket = "unix:///usr/local/var/run/blackfire-agent.sock"
+			if runtime.GOARCH == "arm64" {
+				c.AgentSocket = "unix:///opt/homebrew/var/run/blackfire-agent.sock"
+			} else {
+				c.AgentSocket = "unix:///usr/local/var/run/blackfire-agent.sock"
+			}
 		default:
 			c.AgentSocket = "unix:///var/run/blackfire/agent.sock"
 		}
