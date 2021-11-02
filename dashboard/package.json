@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@testing-library/jest-dom": "^5.14.1",
+    "@testing-library/jest-dom": "^5.15.0",
     "@testing-library/react": "^12.1.2",
     "@testing-library/user-event": "^13.5.0",
     "es6-promise": "^4.2.8",
@@ -12,10 +12,10 @@
     "moment": "^2.29.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "react-redux": "^7.2.5",
+    "react-redux": "^7.2.6",
     "react-scripts": "4.0.3",
-    "redux": "^4.1.1",
-    "redux-thunk": "^2.3.0",
+    "redux": "^4.1.2",
+    "redux-thunk": "^2.4.0",
     "whatwg-fetch": "^3.6.2"
   },
   "scripts": {
