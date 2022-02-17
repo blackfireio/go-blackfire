@@ -216,7 +216,7 @@ func (c *agentClient) sendProfilePrologue(conn *agentConnection) (err error) {
 	return
 }
 
-func (c *agentClient) SendProfile(profile *pprof_reader.Profile) (err error) {
+func (c *agentClient) SendProfile(profile *pprof_reader.Profile, title string) (err error) {
 	var conn *agentConnection
 	if conn, err = newAgentConnection(c.agentNetwork, c.agentAddress, c.logger); err != nil {
 		return
@@ -244,7 +244,7 @@ func (c *agentClient) SendProfile(profile *pprof_reader.Profile) (err error) {
 	}
 
 	profileBuffer := new(bytes.Buffer)
-	if err := bf_format.WriteBFFormat(profile, profileBuffer, c.ProbeOptions()); err != nil {
+	if err := bf_format.WriteBFFormat(profile, profileBuffer, c.ProbeOptions(), title); err != nil {
 		return err
 	}
 	encodedProfile := profileBuffer.Bytes()

@@ -32,6 +32,7 @@ type probe struct {
 	agentClient           *agentClient
 	mutex                 sync.Mutex
 	profileDisableTrigger chan bool
+	currentTitle          string
 	currentState          profilerState
 	cpuProfileBuffers     []*bytes.Buffer
 	memProfileBuffers     []*bytes.Buffer
@@ -67,6 +68,7 @@ func newProbe() *probe {
 	p.ender = &ender{
 		probe: p,
 	}
+	p.currentTitle = "un-named profile"
 	p.startTriggerRearmLoop()
 	return p
 }
@@ -322,6 +324,10 @@ func (p *probe) GenerateSubProfileQuery() (s string, err error) {
 	return challenge + "&signature=" + signature + "&" + args.Encode(), nil
 }
 
+func (p *probe) SetCurrentTitle(title string) {
+	p.currentTitle = title
+}
+
 func (p *probe) startTriggerRearmLoop() {
 	go func() {
 		for {
@@ -491,7 +497,7 @@ func (p *probe) endProfile() error {
 		return nil
 	}
 
-	if err := p.agentClient.SendProfile(profile); err != nil {
+	if err := p.agentClient.SendProfile(profile, p.currentTitle); err != nil {
 		return err
 	}
 

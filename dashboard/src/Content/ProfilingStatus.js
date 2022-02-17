@@ -6,8 +6,13 @@ import * as DashboardActions from '../redux/actions/DashboardActions';
 import Error from "./Error";
 
 class ProfilingStatus extends Component {
+    constructor(props) {
+        super(props);
+        this.profiling_title = '';
+    }
+
     handleEnableProfiler = () => {
-        this.props.actions.enableProfiler();
+        this.props.actions.enableProfiler(this.profiling_title);
     }
 
     handleDisableProfiler = () => {
@@ -16,6 +21,10 @@ class ProfilingStatus extends Component {
 
     handleEndProfiler = () => {
         this.props.actions.endProfiler();
+    }
+
+    handleTitleChange = (event) => {
+        this.profiling_title = event.target.value
     }
 
     render() {
@@ -33,10 +42,16 @@ class ProfilingStatus extends Component {
                 </div>
                 <h2>{'Control:'}</h2>
                 <div>
-                    <button style={{ verticalAlign: 'middle' }} disabled={profiling_enabled} onClick={this.handleEnableProfiler}>{'Enable'}</button>
-                    <button style={{ verticalAlign: 'middle' }} disabled={!profiling_enabled} onClick={this.handleDisableProfiler}>{'Disable'}</button>
-                    <button style={{ verticalAlign: 'middle' }} disabled={!profiling_enabled} onClick={this.handleEndProfiler}>{'End'}</button>
-                    {action_pending && <img alt="" style={{ marginLeft: 10, verticalAlign: 'middle' }} src="data:image/gif;base64,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" />}
+                    <div>
+                        <label htmlFor={"title"}>{'Profile title: '}</label>
+                        <input name="title" type="text" onChange={this.handleTitleChange}/>
+                    </div>
+                    <div>
+                        <button style={{ verticalAlign: 'middle' }} disabled={profiling_enabled} onClick={this.handleEnableProfiler}>{'Enable'}</button>
+                        <button style={{ verticalAlign: 'middle' }} disabled={!profiling_enabled} onClick={this.handleDisableProfiler}>{'Disable'}</button>
+                        <button style={{ verticalAlign: 'middle' }} disabled={!profiling_enabled} onClick={this.handleEndProfiler}>{'End'}</button>
+                        {action_pending && <img alt="" style={{ marginLeft: 10, verticalAlign: 'middle' }} src="data:image/gif;base64,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" />}
+                    </div>
                 </div>
                 <Error />
             </div>

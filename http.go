@@ -70,6 +70,9 @@ func DashboardApiHandler(w http.ResponseWriter, r *http.Request) {
 // EnableHandler starts profiling via HTTP
 func EnableHandler(w http.ResponseWriter, r *http.Request) {
 	logger := globalProbe.configuration.Logger
+	if title, found := parseString(r, "title"); found {
+		globalProbe.SetCurrentTitle(title)
+	}
 	durationInSeconds, err := parseFloat(r, "duration")
 	if err != nil {
 		writeJsonError(w, &problem{Status: 400, Title: "Wrong duration", Detail: err.Error()})
@@ -122,6 +125,17 @@ func parseFloat(r *http.Request, paramName string) (value float64, err error) {
 	return
 }
 
+func parseString(r *http.Request, paramName string) (value string, found bool) {
+	value = ""
+	if values, ok := r.URL.Query()[paramName]; ok {
+		if len(values) > 0 {
+			found = true
+			value = values[0]
+		}
+	}
+	return
+}
+
 func writeJsonError(w http.ResponseWriter, problem *problem) {
 	logger := globalProbe.configuration.Logger
 	logger.Error().Msgf("Blackfire (HTTP): %s: %s", problem.Title, problem.Detail)
@@ -142,10 +156,10 @@ func writeJsonStatus(w http.ResponseWriter) {
 			profiles = append(profiles, fmt.Sprintf(`{
 	"UUID": "%s",
 	"url": "%s",
-	"name": "un-named profile",
+	"name": "%s",
 	"status": "%s",
 	"created_at": "%s"
-}`, profile.UUID, profile.URL, profile.Status.Name, profile.CreatedAt.Format(time.RFC3339)))
+}`, profile.UUID, profile.URL, profile.Title, profile.Status.Name, profile.CreatedAt.Format(time.RFC3339)))
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

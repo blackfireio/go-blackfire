@@ -15,7 +15,7 @@ import (
 )
 
 // Write a parsed profile out as a Blackfire profile.
-func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOptions) (err error) {
+func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOptions, title string) (err error) {
 	const headerCostDimensions = "cpu pmu"
 	const headerProfiledLanguage = "go"
 	const headerProfilerType = "statistical"
@@ -24,9 +24,6 @@ func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOpti
 	if err != nil {
 		return
 	}
-
-	// TODO: Profile title should be user-generated somehow
-	// profileTitle := fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, os.Args[0])
 
 	headers := make(map[string]string)
 	headers["Cost-Dimensions"] = headerCostDimensions
@@ -38,7 +35,10 @@ func WriteBFFormat(profile *pprof_reader.Profile, w io.Writer, options ProbeOpti
 	headers["probed-cpu-sample-rate"] = strconv.Itoa(profile.CpuSampleRateHz)
 	headers["probed-features"] = generateProbedFeaturesHeader(options)
 	headers["Context"] = generateContextHeader()
-	// headers["Profile-Title"] = profileTitle
+
+	if title != "" {
+		headers["Profile-Title"] = fmt.Sprintf(`{"blackfire-metadata":{"title":"%s"}}`, title)
+	}
 
 	bufW := bufio.NewWriter(w)
 	defer func() {
