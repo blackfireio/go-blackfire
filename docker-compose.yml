@@ -8,4 +8,6 @@ services:
         volumes:
             - ./:/app
             - ~/.ssh:/home/node/.ssh:ro
+        environment:
+            - "NODE_OPTIONS=--openssl-legacy-provider"
         working_dir: /app/dashboard
