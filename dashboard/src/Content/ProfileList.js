@@ -20,7 +20,7 @@ function ProfileList({ profiles }) {
                     <Timeago date={profile.created_at} />
                     {` - ${upperCaseFirst(profile.status)} - `}
                     <a href={profile.url} rel="noopener noreferrer" target="_blank">
-                        {profile.name}
+                        {profile.name === "" ? <i>{'Untitled'}</i> : profile.name}
                     </a>
                 </div>
             ))}

@@ -72,6 +72,11 @@ func GenerateSubProfileQuery() (string, error) {
 	return globalProbe.GenerateSubProfileQuery()
 }
 
+// SetCurrentTitle Sets the title to use for following profiles
+func SetCurrentTitle(title string) {
+	globalProbe.SetCurrentTitle(title)
+}
+
 // globalProbe is the access point for all probe functionality. The API, signal,
 // and HTTP interfaces perform all operations by proxying to globalProbe. This
 // ensures that mutexes and other guards are respected, and no interface can

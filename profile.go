@@ -12,6 +12,7 @@ type Profile struct {
 	UUID      string
 	URL       string
 	APIURL    string
+	Title     string   `json:"label"`
 	CreatedAt BFTime   `json:"created_at"`
 	Status    Status   `json:"status"`
 	Envelope  Envelope `json:"envelope"`

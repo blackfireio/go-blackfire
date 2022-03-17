@@ -62,13 +62,15 @@ function craftErrorIfEmpty(response) {
     return data;
 }
 
-export function enableProfiler() {
+export function enableProfiler(title) {
     return (dispatch) => {
         dispatch({
             type: DashboardConstants.PROFILER_ENABLING,
         });
 
-        doFetch('./enable', 'POST')
+        const query = 'title=' + encodeURIComponent(title.trim());
+
+        doFetch('./enable?' + query, 'POST')
             .then((response) => {
                 dispatch({
                     type: DashboardConstants.PROFILER_ENABLED,
