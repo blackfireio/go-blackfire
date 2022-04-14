@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 5
+  version: 6
   cacheKey: 8
 
 "@ampproject/remapping@npm:^2.1.0":
@@ -568,7 +568,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/plugin-proposal-private-property-in-object@npm:^7.16.7":
+"@babel/plugin-proposal-private-property-in-object@npm:^7.16.0, @babel/plugin-proposal-private-property-in-object@npm:^7.16.7":
   version: 7.16.7
   resolution: "@babel/plugin-proposal-private-property-in-object@npm:7.16.7"
   dependencies:
