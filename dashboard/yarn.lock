@@ -2230,9 +2230,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@testing-library/react@npm:^13.0.0":
-  version: 13.0.1
-  resolution: "@testing-library/react@npm:13.0.1"
+"@testing-library/react@npm:^13.1.1":
+  version: 13.1.1
+  resolution: "@testing-library/react@npm:13.1.1"
   dependencies:
     "@babel/runtime": ^7.12.5
     "@testing-library/dom": ^8.5.0
@@ -2240,16 +2240,16 @@ __metadata:
   peerDependencies:
     react: ^18.0.0
     react-dom: ^18.0.0
-  checksum: fb38255439eeb79118f4704d3e37eb2435fdd2ccaa709298a3ee04c1fcf630731bcd96937a50203f3c1b60a6886d1490493a2e360f9bcac76571edb52fd4a2c3
+  checksum: 9a0043be5623630936e6badcd87bcbed14d6d6c64c2b16413b66de90c36670bbd6766b7fc6c09cfc67aa6c1c49d8123ed97d3897c4103836c77de40349b187c6
   languageName: node
   linkType: hard
 
-"@testing-library/user-event@npm:^14.1.0":
-  version: 14.1.0
-  resolution: "@testing-library/user-event@npm:14.1.0"
+"@testing-library/user-event@npm:^14.1.1":
+  version: 14.1.1
+  resolution: "@testing-library/user-event@npm:14.1.1"
   peerDependencies:
     "@testing-library/dom": ">=7.21.4"
-  checksum: 6fabd42a0ea747912183d1780063a1128609007703647ce5e4f2d88a43c9db02771e737403722a7ee5211dbe47b14fd3088aaaafa24d341ca086875546e5a83b
+  checksum: dd02aecbde64002aa3c58392137672156101fc3bb821f43db99e3c652e6a6d34b3eb29b2524eb41ad2a317cfdff6ab2e88d7027605d88dccaacf4f07a08dc7a9
   languageName: node
   linkType: hard
 
@@ -6563,20 +6563,20 @@ __metadata:
   resolution: "go-dashboard@workspace:."
   dependencies:
     "@testing-library/jest-dom": ^5.16.4
-    "@testing-library/react": ^13.0.0
-    "@testing-library/user-event": ^14.1.0
+    "@testing-library/react": ^13.1.1
+    "@testing-library/user-event": ^14.1.1
     es6-promise: ^4.2.8
     eslint: ^8.13.0
     eslint-config-airbnb: ^19.0.4
-    immutable: ^4.0.0-rc.12
+    immutable: ^4.0.0
     keymirror: ^0.1.1
-    moment: ^2.29.2
+    moment: ^2.29.3
     react: ^18.0.0
     react-app-rewired: ^2.2.1
     react-dom: ^18.0.0
     react-redux: ^7.2.8
-    react-scripts: ^5.0.0
-    redux: ^4.1.2
+    react-scripts: ^5.0.1
+    redux: ^4.2.0
     redux-thunk: ^2.4.1
     serve: ^13.0.2
     uglifyjs-webpack-plugin: ^2.2.0
@@ -6960,7 +6960,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"immutable@npm:^4.0.0-rc.12":
+"immutable@npm:^4.0.0":
   version: 4.0.0
   resolution: "immutable@npm:4.0.0"
   checksum: 4b5e9181e4d5fa06728a481835ec09c86367e5d03268666c95b522b7644ab891098022e4479a43c4c81a68f2ed82f10751ce5d33e208d7b873b6e7f9dfaf4d87
@@ -8706,10 +8706,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"moment@npm:^2.29.2":
-  version: 2.29.2
-  resolution: "moment@npm:2.29.2"
-  checksum: ee850b5776485e2af0775ceb3cfebaa7d7638f0a750fe0678fcae24c310749f96c1938808384bd422a55e5703834a71fcb09c8a1d36d9cf847f6ed0205d7a3e5
+"moment@npm:^2.29.3":
+  version: 2.29.3
+  resolution: "moment@npm:2.29.3"
+  checksum: 2e780e36d9a1823c08a1b6313cbb08bd01ecbb2a9062095820a34f42c878991ccba53abaa6abb103fd5c01e763724f295162a8c50b7e95b4f1c992ef0772d3f0
   languageName: node
   linkType: hard
 
@@ -10613,7 +10613,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-scripts@npm:^5.0.0":
+"react-scripts@npm:^5.0.1":
   version: 5.0.1
   resolution: "react-scripts@npm:5.0.1"
   dependencies:
@@ -10761,12 +10761,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"redux@npm:^4.0.0, redux@npm:^4.1.2":
-  version: 4.1.2
-  resolution: "redux@npm:4.1.2"
+"redux@npm:^4.0.0, redux@npm:^4.2.0":
+  version: 4.2.0
+  resolution: "redux@npm:4.2.0"
   dependencies:
     "@babel/runtime": ^7.9.2
-  checksum: 6a839cee5bd580c5298d968e9e2302150e961318253819bcd97f9d945a5a409559eacddf6026f4118bb68b681c593d90e8a2c5bbf278f014aff9bf0d2d8fa084
+  checksum: 75f3955c89b3f18edf5411e5fb482aa2e4f41a416183e8802a6bf6472c4fc3d47675b8b321d147f8af8e0f616436ac507bf5a25f1c4d6180e797b549c7db2c1d
   languageName: node
   linkType: hard
 
