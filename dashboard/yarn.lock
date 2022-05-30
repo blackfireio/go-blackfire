@@ -2230,9 +2230,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@testing-library/react@npm:^13.2.0":
-  version: 13.2.0
-  resolution: "@testing-library/react@npm:13.2.0"
+"@testing-library/react@npm:^13.3.0":
+  version: 13.3.0
+  resolution: "@testing-library/react@npm:13.3.0"
   dependencies:
     "@babel/runtime": ^7.12.5
     "@testing-library/dom": ^8.5.0
@@ -2240,7 +2240,7 @@ __metadata:
   peerDependencies:
     react: ^18.0.0
     react-dom: ^18.0.0
-  checksum: 29f4a97c932a7fd78a55791a0ae0ba8d33c5241acbade98b6714440981e6e3d86a243e0b22161d3323b549ce059c175ae56d6b5053ad44083ab6e40ca211f19e
+  checksum: 98fd8616a7cae0ecfcbe97b5b3c5b91fbafccf449c04875395ccc0e3f0b139e53b3261b9536ec2169a5e2883a1be2098907209064061fe0c2ff21dfbc785dd40
   languageName: node
   linkType: hard
 
@@ -6558,12 +6558,12 @@ __metadata:
   resolution: "go-dashboard@workspace:."
   dependencies:
     "@testing-library/jest-dom": ^5.16.4
-    "@testing-library/react": ^13.2.0
+    "@testing-library/react": ^13.3.0
     "@testing-library/user-event": ^14.2.0
     es6-promise: ^4.2.8
     eslint: ^8.16.0
     eslint-config-airbnb: ^19.0.4
-    immutable: ^4.0.0
+    immutable: ^4.1.0
     keymirror: ^0.1.1
     moment: ^2.29.3
     react: ^18.1.0
@@ -6955,10 +6955,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"immutable@npm:^4.0.0":
-  version: 4.0.0
-  resolution: "immutable@npm:4.0.0"
-  checksum: 4b5e9181e4d5fa06728a481835ec09c86367e5d03268666c95b522b7644ab891098022e4479a43c4c81a68f2ed82f10751ce5d33e208d7b873b6e7f9dfaf4d87
+"immutable@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "immutable@npm:4.1.0"
+  checksum: b9bc1f14fb18eb382d48339c064b24a1f97ae4cf43102e0906c0a6e186a27afcd18b55ca4a0b63c98eefb58143e2b5ebc7755a5fb4da4a7ad84b7a6096ac5b13
   languageName: node
   linkType: hard
 
