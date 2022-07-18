@@ -5,7 +5,7 @@
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",
-    "@testing-library/user-event": "^14.2.1",
+    "@testing-library/user-event": "^14.2.5",
     "es6-promise": "^4.2.8",
     "immutable": "^4.1.0",
     "keymirror": "^0.1.1",
@@ -44,10 +44,10 @@
     ]
   },
   "devDependencies": {
-    "eslint": "^8.19.0",
+    "eslint": "^8.20.0",
     "eslint-config-airbnb": "^19.0.4",
     "react-app-rewired": "^2.2.1",
-    "serve": "^13.0.4",
+    "serve": "^14.0.1",
     "uglifyjs-webpack-plugin": "^2.2.0",
     "webpack": "^5.73.0",
     "webpack-cli": "^4.10.0"
