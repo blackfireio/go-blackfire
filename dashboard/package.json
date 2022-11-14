@@ -47,9 +47,9 @@
     "eslint": "^8.27.0",
     "eslint-config-airbnb": "^19.0.4",
     "react-app-rewired": "^2.2.1",
-    "serve": "^14.0.1",
+    "serve": "^14.1.1",
     "uglifyjs-webpack-plugin": "^2.2.0",
-    "webpack": "^5.74.0",
+    "webpack": "^5.75.0",
     "webpack-cli": "^4.10.0"
   },
   "packageManager": "yarn@3.2.4"
