@@ -5733,9 +5733,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:^8.27.0, eslint@npm:^8.3.0":
-  version: 8.27.0
-  resolution: "eslint@npm:8.27.0"
+"eslint@npm:^8.28.0, eslint@npm:^8.3.0":
+  version: 8.28.0
+  resolution: "eslint@npm:8.28.0"
   dependencies:
     "@eslint/eslintrc": ^1.3.3
     "@humanwhocodes/config-array": ^0.11.6
@@ -5778,7 +5778,7 @@ __metadata:
     text-table: ^0.2.0
   bin:
     eslint: bin/eslint.js
-  checksum: 153b022d309e1b647a73b1bb0fa98912add699b06e279084155f23c6f2b5fc5abd05411fc1ba81608a24bbfaf044ca079544c16fffa6fc987b8f676c9960a2c4
+  checksum: 1b793486b2ec80f0602d75fff7116f7c39a3286f523608a999eead9bec4154a06841785d2b4fb87f8292a94cf85778c1dbfaec727772a09c4d604fdb9ff0809a
   languageName: node
   linkType: hard
 
@@ -6329,7 +6329,7 @@ __metadata:
 
 "fsevents@patch:fsevents@^2.3.2#~builtin<compat/fsevents>, fsevents@patch:fsevents@~2.3.2#~builtin<compat/fsevents>":
   version: 2.3.2
-  resolution: "fsevents@patch:fsevents@npm%3A2.3.2#~builtin<compat/fsevents>::version=2.3.2&hash=18f3a7"
+  resolution: "fsevents@patch:fsevents@npm%3A2.3.2#~builtin<compat/fsevents>::version=2.3.2&hash=df0bf1"
   dependencies:
     node-gyp: latest
   conditions: os=darwin
@@ -6519,7 +6519,7 @@ __metadata:
     "@testing-library/react": ^13.4.0
     "@testing-library/user-event": ^14.4.3
     es6-promise: ^4.2.8
-    eslint: ^8.27.0
+    eslint: ^8.28.0
     eslint-config-airbnb: ^19.0.4
     immutable: ^4.1.0
     keymirror: ^0.1.1
@@ -6531,7 +6531,7 @@ __metadata:
     react-scripts: ^5.0.1
     redux: ^4.2.0
     redux-thunk: ^2.4.2
-    serve: ^14.1.1
+    serve: ^14.1.2
     uglifyjs-webpack-plugin: ^2.2.0
     webpack: ^5.75.0
     webpack-cli: ^4.10.0
@@ -10949,7 +10949,7 @@ __metadata:
 
 "resolve@patch:resolve@^1.14.2#~builtin<compat/resolve>, resolve@patch:resolve@^1.19.0#~builtin<compat/resolve>, resolve@patch:resolve@^1.20.0#~builtin<compat/resolve>, resolve@patch:resolve@^1.22.0#~builtin<compat/resolve>, resolve@patch:resolve@^1.9.0#~builtin<compat/resolve>":
   version: 1.22.0
-  resolution: "resolve@patch:resolve@npm%3A1.22.0#~builtin<compat/resolve>::version=1.22.0&hash=07638b"
+  resolution: "resolve@patch:resolve@npm%3A1.22.0#~builtin<compat/resolve>::version=1.22.0&hash=c3c19d"
   dependencies:
     is-core-module: ^2.8.1
     path-parse: ^1.0.7
@@ -10962,7 +10962,7 @@ __metadata:
 
 "resolve@patch:resolve@^2.0.0-next.3#~builtin<compat/resolve>":
   version: 2.0.0-next.3
-  resolution: "resolve@patch:resolve@npm%3A2.0.0-next.3#~builtin<compat/resolve>::version=2.0.0-next.3&hash=07638b"
+  resolution: "resolve@patch:resolve@npm%3A2.0.0-next.3#~builtin<compat/resolve>::version=2.0.0-next.3&hash=c3c19d"
   dependencies:
     is-core-module: ^2.2.0
     path-parse: ^1.0.6
@@ -11336,9 +11336,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"serve@npm:^14.1.1":
-  version: 14.1.1
-  resolution: "serve@npm:14.1.1"
+"serve@npm:^14.1.2":
+  version: 14.1.2
+  resolution: "serve@npm:14.1.2"
   dependencies:
     "@zeit/schemas": 2.21.0
     ajv: 8.11.0
@@ -11353,7 +11353,7 @@ __metadata:
     update-check: 1.5.4
   bin:
     serve: build/main.js
-  checksum: 7db310dfbe05699b51b1ff5932598c666cecceceb7a5dfaf0b04bb90a7f5fdca4c4dd5eaa1224e0df35fdd6a59c5ca98a730aca99bb7765e003a8236e6e81743
+  checksum: 814e429f2373addca7e57c38c548ae1d4ef7afe52f5091aa421604f4c61633417e891834d5c7bcb6439ee4b0aeb7a4871e3e704c42173b602986566be21f5375
   languageName: node
   linkType: hard
 
