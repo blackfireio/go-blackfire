@@ -7,7 +7,7 @@
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^14.4.3",
     "es6-promise": "^4.2.8",
-    "immutable": "^4.2.1",
+    "immutable": "^4.2.2",
     "keymirror": "^0.1.1",
     "moment": "^2.29.4",
     "react": "^18.2.0",
