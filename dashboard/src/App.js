@@ -18,7 +18,7 @@ function App() {
                 <div className="wrapper">
                     <p>
                         {'Blackfire Go Probe Dashboard version experimental - '}
-                        <a href="https://support.blackfire.io/en/collections/145104-troubleshooting">{'Troubleshooting'}</a>
+                        <a href="https://support.blackfire.platform.sh/hc/en-us/sections/4792498935058-Troubleshooting">{'Troubleshooting'}</a>
                     </p>
                 </div>
             </footer>
