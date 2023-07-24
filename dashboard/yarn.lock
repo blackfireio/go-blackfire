@@ -2287,9 +2287,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@testing-library/jest-dom@npm:^5.16.5":
-  version: 5.16.5
-  resolution: "@testing-library/jest-dom@npm:5.16.5"
+"@testing-library/jest-dom@npm:^5.17.0":
+  version: 5.17.0
+  resolution: "@testing-library/jest-dom@npm:5.17.0"
   dependencies:
     "@adobe/css-tools": ^4.0.1
     "@babel/runtime": ^7.9.2
@@ -2300,7 +2300,7 @@ __metadata:
     dom-accessibility-api: ^0.5.6
     lodash: ^4.17.15
     redent: ^3.0.0
-  checksum: 94911f901a8031f3e489d04ac057cb5373621230f5d92bed80e514e24b069fb58a3166d1dd86963e55f078a1bd999da595e2ab96ed95f452d477e272937d792a
+  checksum: 9f28dbca8b50d7c306aae40c3aa8e06f0e115f740360004bd87d57f95acf7ab4b4f4122a7399a76dbf2bdaaafb15c99cc137fdcb0ae457a92e2de0f3fbf9b03b
   languageName: node
   linkType: hard
 
@@ -6580,7 +6580,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "go-dashboard@workspace:."
   dependencies:
-    "@testing-library/jest-dom": ^5.16.5
+    "@testing-library/jest-dom": ^5.17.0
     "@testing-library/react": ^14.0.0
     "@testing-library/user-event": ^14.4.3
     es6-promise: ^4.2.8
@@ -6598,9 +6598,9 @@ __metadata:
     redux-thunk: ^2.4.2
     serve: ^14.2.0
     uglifyjs-webpack-plugin: ^2.2.0
-    webpack: ^5.88.1
+    webpack: ^5.88.2
     webpack-cli: ^5.1.4
-    whatwg-fetch: ^3.6.2
+    whatwg-fetch: ^3.6.17
   languageName: unknown
   linkType: soft
 
@@ -12800,9 +12800,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"webpack@npm:^5.64.4, webpack@npm:^5.88.1":
-  version: 5.88.1
-  resolution: "webpack@npm:5.88.1"
+"webpack@npm:^5.64.4, webpack@npm:^5.88.2":
+  version: 5.88.2
+  resolution: "webpack@npm:5.88.2"
   dependencies:
     "@types/eslint-scope": ^3.7.3
     "@types/estree": ^1.0.0
@@ -12833,7 +12833,7 @@ __metadata:
       optional: true
   bin:
     webpack: bin/webpack.js
-  checksum: 726e7e05ab2e7c142609a673dd6aa1a711ed97f349418a2a393d650c5ddad172d191257f60e1e37f6b2a77261571c202aabd5ce9240791a686774f0801cf5ec2
+  checksum: 79476a782da31a21f6dd38fbbd06b68da93baf6a62f0d08ca99222367f3b8668f5a1f2086b7bb78e23172e31fa6df6fa7ab09b25e827866c4fc4dc2b30443ce2
   languageName: node
   linkType: hard
 
@@ -12864,10 +12864,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"whatwg-fetch@npm:^3.6.2":
-  version: 3.6.2
-  resolution: "whatwg-fetch@npm:3.6.2"
-  checksum: ee976b7249e7791edb0d0a62cd806b29006ad7ec3a3d89145921ad8c00a3a67e4be8f3fb3ec6bc7b58498724fd568d11aeeeea1f7827e7e1e5eae6c8a275afed
+"whatwg-fetch@npm:^3.6.17, whatwg-fetch@npm:^3.6.2":
+  version: 3.6.17
+  resolution: "whatwg-fetch@npm:3.6.17"
+  checksum: 0a8785dc2d1515c17ee9365d3f6438cf8fd281567426652fc6c55fc99e58cc6287ae5d1add5b8b1dd665f149e38d3de4ebe3812fd7170438ba0681d03b88b4dd
   languageName: node
   linkType: hard
 
