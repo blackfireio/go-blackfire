@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/jest-dom": "^6.1.2",
     "@testing-library/react": "^14.0.0",
     "@testing-library/user-event": "^14.4.3",
     "es6-promise": "^4.2.8",
-    "immutable": "^4.3.2",
+    "immutable": "^4.3.4",
     "keymirror": "^0.1.1",
     "moment": "^2.29.4",
     "react": "^18.2.0",
@@ -16,7 +16,7 @@
     "react-scripts": "^5.0.1",
     "redux": "^4.2.1",
     "redux-thunk": "^2.4.2",
-    "whatwg-fetch": "^3.6.17"
+    "whatwg-fetch": "^3.6.18"
   },
   "scripts": {
     "start": "react-app-rewired start --scripts-version react-scripts",
@@ -44,13 +44,13 @@
     ]
   },
   "devDependencies": {
-    "eslint": "^8.46.0",
+    "eslint": "^8.48.0",
     "eslint-config-airbnb": "^19.0.4",
     "react-app-rewired": "^2.2.1",
-    "serve": "^14.2.0",
+    "serve": "^14.2.1",
     "uglifyjs-webpack-plugin": "^2.2.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
   },
-  "packageManager": "yarn@3.6.1"
+  "packageManager": "yarn@3.6.3"
 }
