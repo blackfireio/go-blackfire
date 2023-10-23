@@ -1,0 +1,6 @@
+{
+	"upgrade": true,
+	"format": "group",
+	"interactive": true,
+	"peer": true
+}
