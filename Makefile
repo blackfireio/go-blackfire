@@ -50,7 +50,8 @@ dashboard-eslint: dashboard/node_modules
 	@$(RUN_DASHBOARD) npm run eslint
 
 dashboard-build-docker:
-	$(COMPOSE) build --pull --parallel $(COMPOSE_BUILD_OPT)
+	@$(COMPOSE) pull --parallel
+	@$(COMPOSE) build --pull --parallel $(COMPOSE_BUILD_OPT)
 
 down: ## Stop and remove containers, networks, images, and volumes
 	@$(COMPOSE) down --remove-orphans
