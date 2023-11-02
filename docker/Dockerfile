@@ -1,11 +1,18 @@
-FROM node:20
+ARG NODE_VERSION=20        # https://hub.docker.com/_/node/tags?page=1&name=19
+ARG GOSU_VERSION=1.16      # https://github.com/tianon/gosu/releases
 
-RUN curl -Lo /usr/local/bin/gosu https://github.com/tianon/gosu/releases/download/1.16/gosu-amd64 && chmod +x /usr/local/bin/gosu
+FROM alpine/curl as build_gosu
+ARG GOSU_VERSION
 
-COPY entrypoint_dev.sh /usr/local/bin/entrypoint_dev.sh
+RUN curl -fsLo /usr/local/bin/gosu https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-$([ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "amd64")
+RUN chmod +x /usr/local/bin/gosu
 
-ENTRYPOINT ["/usr/local/bin/entrypoint_dev.sh"]
-
-CMD true
+FROM node:${NODE_VERSION}
 
 WORKDIR /app/dashboard
+
+COPY entrypoint_dev.sh /usr/local/bin/entrypoint_dev.sh
+COPY --from=build_gosu /usr/local/bin/gosu /usr/local/bin/gosu
+
+ENTRYPOINT ["/usr/local/bin/entrypoint_dev.sh"]
+CMD true
