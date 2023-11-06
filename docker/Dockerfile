@@ -1,5 +1,5 @@
 ARG NODE_VERSION=21        # https://hub.docker.com/_/node/tags?page=1&name=19
-ARG GOSU_VERSION=1.16      # https://github.com/tianon/gosu/releases
+ARG GOSU_VERSION=1.17      # https://github.com/tianon/gosu/releases
 
 FROM alpine/curl as build_gosu
 ARG GOSU_VERSION
