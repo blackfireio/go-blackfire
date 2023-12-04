@@ -1,5 +1,5 @@
 import { createStore, applyMiddleware, compose } from 'redux';
-import thunk from 'redux-thunk/es';
+import { thunk } from 'redux-thunk';
 import createRootReducer from '../reducers';
 
 // Middleware you want to use in production:
