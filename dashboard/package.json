@@ -12,11 +12,11 @@
     "moment": "^2.29.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-redux": "^9.0.3",
+    "react-redux": "^9.0.4",
     "react-scripts": "^5.0.1",
     "redux": "^5.0.0",
     "redux-thunk": "^3.1.0",
-    "whatwg-fetch": "^3.6.19"
+    "whatwg-fetch": "^3.6.20"
   },
   "scripts": {
     "start": "react-app-rewired start --scripts-version react-scripts",
@@ -44,7 +44,7 @@
     ]
   },
   "devDependencies": {
-    "eslint": "^8.55.0",
+    "eslint": "^8.56.0",
     "eslint-config-airbnb": "^19.0.4",
     "react-app-rewired": "^2.2.1",
     "serve": "^14.2.1",
